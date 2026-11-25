@@ -52,11 +52,12 @@ golangci-lint を WebAssembly（js/wasm）にビルドし、**ブラウザの中
 | --- | --- | --- | --- |
 | サードパーティモジュール | **対応しない**。import できるのは標準ライブラリと、同じモジュール内のパッケージだけ | golangci-lint は依存パッケージを export data から読む作りで、ブラウザ内で export data を作るにはコンパイラが要る。golangci-lint へのパッチ・モジュール取得用のプロキシ・サーバー併用のいずれも負担が大きい | 標準ライブラリ以外を import すると、その import 行に「標準ライブラリのみ対応しています」とエラーを表示する（[4.6](#46-ブラウザ内で動かない機能の扱い)） |
 | 対応ブラウザ | **Google Chrome（デスクトップ版）で動けばよい**。他のブラウザ（モバイル版を含む）は動作確認・対応をしない | PoC で Chromium での動作を確認済み。WASM のメモリ使用量（300〜550MB）や速度のブラウザ差を調べて対応するコストを避ける | Chrome 以外では「Google Chrome で動作確認しています」と案内を出す。実行は止めない |
+| Go と golangci-lint のバージョン | **Go は最新の安定版（go1.27.4）を使い、golangci-lint もそれに対応する最新版（v2.15.0）にする** | 新しい言語機能・標準ライブラリで試せるようにするため。golangci-lint の公式リリースは古い Go でビルドされていることがあるが、パリティテストでネイティブ版（同じ Go でビルド）と一致することを確認する | ツールバーのバージョン選択に `v2.15.0（go1.27.4）` のように表示する |
 | ダウンロードサイズ | **削減しない**。初回約 24MB（gzip 後）をそのまま受け入れる | 削減策（CDN の brotli 圧縮、`wasm-opt`、標準ライブラリの遅延ロード等）は効果に対して手間が大きい | ダウンロードの進捗を表示する。2 回目以降の訪問は Service Worker のキャッシュから読む |
 
 ## 2. 前提となる事実（検証済み）
 
-golangci-lint v2.5.0 のネイティブ版と、js/wasm 版の PoC（[付録 A](#付録-a-wasm-方式の-poc-結果)）・Phase 1 の実装で確認した事実。
+golangci-lint のネイティブ版（v2.5.0・v2.15.0）と、js/wasm 版の PoC（[付録 A](#付録-a-wasm-方式の-poc-結果)）・Phase 1 の実装で確認した事実。
 
 | 項目 | 挙動 | 設計への影響 |
 | --- | --- | --- |
@@ -74,6 +75,7 @@ golangci-lint v2.5.0 のネイティブ版と、js/wasm 版の PoC（[付録 A](
 | フォーマッタ | v2 では `formatters` セクションに分離。`golangci-lint fmt` でファイルを整形できる | 「Format」機能は `fmt` サブコマンドで実装する。ただし `gci` はブラウザ内で動かない |
 | `go` コマンドへの依存 | x/tools の `imports` パッケージ（`goimports`・`gci`・`swaggo` が使う）は `go env` を起動しようとして失敗し、**検査全体が止まる**。`gomoddirectives` は `go list -m` を起動できず無視される | x/tools にもう 1 つパッチを当て、`go env` の代わりに環境変数から値を返す（`goimports`・`gci`・`swaggo` は動くようになった）。残りは非対応として UI で警告する（[4.6](#46-ブラウザ内で動かない機能の扱い)） |
 | Go バージョン | golangci-lint をビルドした Go と、同梱する標準ライブラリの Go は一致している必要がある | バージョンごとに「golangci-lint ＋ Go ツールチェイン」の組を固定してビルドする |
+| Go と golangci-lint の組み合わせ | 型情報（export data）の形式は Go のバージョンで変わる。golangci-lint v2.5.0（x/tools v0.37.0）は Go 1.27 の形式（バージョン 5）を読めず、ネイティブ版でも `fmt` すら import できない | Go を上げるときは、その Go に対応した golangci-lint（現在は v2.15.0、x/tools v0.52.0）も一緒に上げる |
 | 配信時の圧縮 | 多くの静的サーバーは `*.gz` に `Content-Encoding: gzip` を付けるため、ブラウザが自動で展開してしまい、チェックサムが合わなくなる（`vite preview` で発生） | gzip 済みアセットの拡張子は `.bin` にする |
 
 ## 3. 全体アーキテクチャ
@@ -152,7 +154,7 @@ golangci-lint v2.5.0 のネイティブ版と、js/wasm 版の PoC（[付録 A](
   -- go.mod --
   module playground
 
-  go 1.25
+  go 1.27
   -- main.go --
   package main
   ...
@@ -228,7 +230,7 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 | 6. マニフェスト | 各アセットのサイズと SHA-256 を書き出す | `versions.json` |
 | 7. 検証 | テストスイート（[9 章](#9-テスト戦略)）を実行する | — |
 
-- **Go ツールチェインの固定**: golangci-lint の公式リリースと同じ Go のマイナーバージョン（v2.5.0 なら Go 1.25 系）でビルドし、手順 3 の標準ライブラリも同じ Go から作る。`wasm/go.mod` の `toolchain` 行（v2.5.0 では go1.25.1）で指定し、`wasm/build.sh` が `GOTOOLCHAIN` で強制する
+- **Go ツールチェインの固定**: Go の最新の安定版（現在は go1.27.4）でビルドし、手順 3 の標準ライブラリも同じ Go から作る（[1.5](#15-スコープの決定事項)。当初は golangci-lint の公式リリースと同じ Go にする方針だった）。`wasm/go.mod` の `toolchain` 行で指定し、`wasm/build.sh` が `GOTOOLCHAIN` で強制する。golangci-lint はその Go に対応したバージョンが必要（[2 章](#2-前提となる事実検証済み)）。Go や golangci-lint を上げたときは、パリティテストでネイティブ版（同じ Go でビルド）と結果が一致すること、[4.6](#46-ブラウザ内で動かない機能の扱い) の非対応一覧が変わっていないことを確認する
 - **パッチの追従**: x/tools のパッチは `defaultDriver` の冒頭に数行足すだけなので、x/tools が更新されても当たり続ける見込みが高い。当たらなくなったらビルドが失敗するので、CI で気づける
 - **拡張子 `.bin`**: gzip 済みのアセットは `.gz` ではなく `.bin` で配信する。`.gz` だと多くの静的サーバーが `Content-Encoding: gzip` を付け、ブラウザが展開してしまうため（[2 章](#2-前提となる事実検証済み)）
 - **ビルド成果物の不変性**: `/v/{version}/` 以下は一度公開したら変えない。ビルド方法を変えたときは、マニフェスト（`versions.json`）でビルド番号を上げてパスを変える（例: `/v/v2.5.0-2/`）
@@ -246,7 +248,7 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 ```json
 {
   "schema": 1,
-  "version": "v2.5.0",
+  "version": "v2.15.0",
   "files": "-- go.mod --\n...\n-- main.go --\n...",
   "config": "version: \"2\"\n..."
 }
@@ -263,14 +265,14 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 
 ### 4.6 ブラウザ内で動かない機能の扱い
 
-ブラウザ内では `go` コマンドを起動できない。Phase 1 で、`go` コマンドを使うコードを持つリンター・フォーマッタを 1 つずつ WASM 版で動かして確認した。
+ブラウザ内では `go` コマンドを起動できない。Phase 1 で、`go` コマンドを使うコードを持つリンター・フォーマッタを 1 つずつ WASM 版で動かして確認した（v2.5.0 で確認し、v2.15.0 に上げたときに再確認した）。
 
 | 機能 | 結果 | 扱い |
 | --- | --- | --- |
 | `goimports`・`swaggo`・`gci` フォーマッタ | パッチ前は x/tools の `imports` パッケージが `go env` を起動しようとして失敗し、**検査全体が止まっていた**。x/tools のパッチ（[4.3](#43-ビルドパイプライン)）で動くようになり、ネイティブと同じ結果になる（`gci` の `localmodule` セクションを含む） | 対応 |
 | `depguard`（`$gostd` 変数）・`gosec`・`unconvert`・`goheader`（`template-path`） | 動作し、ネイティブと同じ結果 | 対応 |
 | `gomoddirectives` | `go list -m` を起動できず、警告をログに出して無視される | 非対応。設定で有効にされていたら警告マーカーを出す |
-| `gomodguard` | エラーは出ないが、モジュールの依存関係を調べるリンターなので、標準ライブラリだけの playground では何も検出しない | 非対応。同上 |
+| `gomodguard`・`gomodguard_v2` | エラーは出ないが、モジュールの依存関係を調べるリンターなので、標準ライブラリだけの playground では何も検出しない | 非対応。同上 |
 | gocritic の ruleguard | ルールファイルが `github.com/quasilyte/go-ruleguard/dsl` を import するため読み込めず、「empty rule set」という指摘が出る | 非対応。`linters.settings.gocritic.settings.ruleguard` に警告マーカーを出す |
 | `linters.settings.custom`（プラグイン） | ブラウザ内ではロードできない | 非対応。警告マーカーを出す |
 | `linters.default: all` | 上の非対応リンターも有効になる | `default: all` の行に、動かないリンターの一覧を案内として出す（`linters.disable` に入れると消える） |
@@ -361,7 +363,7 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 ### Phase 1: MVP（完了）
 
 - 検査エンジンを TypeScript に移植（`web/src/engine/`）、ビルドパイプラインを `wasm/` に移した
-- golangci-lint の公式リリースと同じ Go（go1.25.1）でビルド
+- Go の最新の安定版でビルド。当初は golangci-lint v2.5.0 の公式リリースと同じ go1.25.1 だったが、2026-11-25 に go1.27.4 へ変更し、Go 1.27 に対応した golangci-lint v2.15.0 に上げた
 - CodeMirror 6 エディタ（ライト・ダーク両対応）、エディタ内マーカー、結果一覧（クリックで該当箇所へ移動）
 - 単一ファイル + 自動生成 `go.mod`。txtar による複数ファイルも 1 つのエディタで扱える（タブ表示は Phase 2）
 - 設定 YAML の自由記述（書き換えずにそのまま渡す）。空ならデフォルト設定（`standard`）で実行

@@ -3,19 +3,27 @@
 // and checks that the normalized issues are identical.
 //
 // usage: tsx scripts/parity.ts [versionDir] [nativeBinary]
+// (versionDir defaults to the default version in wasm/dist/versions.json)
 
 import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import type { VersionsManifest } from '../src/engine/client';
 import { parseReport, type Issue } from '../src/engine/normalize';
 import { defaultGoMod } from '../src/engine/runner';
 import { filesFromText } from '../src/txtar';
 import { loadRuntime } from './node-runtime';
 
 const root = resolve(import.meta.dirname, '../..');
-const versionDir = resolve(process.argv[2] ?? join(root, 'wasm/dist/v/v2.5.0'));
+async function defaultVersionDir(): Promise<string> {
+  const dist = join(root, 'wasm/dist');
+  const manifest = JSON.parse(await readFile(join(dist, 'versions.json'), 'utf8')) as VersionsManifest;
+  return join(dist, manifest.versions.find((v) => v.version === manifest.default)!.path);
+}
+
+const versionDir = resolve(process.argv[2] ?? (await defaultVersionDir()));
 const native = resolve(process.argv[3] ?? join(root, 'wasm/.build/golangci-lint'));
 const casesDir = join(root, 'testdata/parity');
 const run = promisify(execFile);

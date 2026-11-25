@@ -2,13 +2,14 @@
 // detection in the user's .golangci.yml. The YAML itself is never modified:
 // these are shown as warnings in the editor.
 //
-// Verified with golangci-lint v2.5.0 (see docs/design.md, section 4.6).
+// Verified with golangci-lint v2.5.0 and v2.15.0 (see docs/design.md, section 4.6).
 
 import { isMap, isScalar, isSeq, parseDocument, type Document, type Node } from 'yaml';
 
 export const UNSUPPORTED_LINTERS: Record<string, string> = {
   gomoddirectives: 'gomoddirectives は go コマンド（go list -m）を使うため、ブラウザでは動作しません（無視されます）。',
   gomodguard: 'gomodguard はモジュールの依存関係を検査します。playground は標準ライブラリのみ対応のため、何も検出しません。',
+  gomodguard_v2: 'gomodguard_v2 はモジュールの依存関係を検査します。playground は標準ライブラリのみ対応のため、何も検出しません。',
 };
 
 export interface ConfigDiagnostic {

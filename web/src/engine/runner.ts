@@ -104,7 +104,7 @@ export async function runGolangciLint(memfs: MemFS, module: WebAssembly.Module, 
   return { exitCode, stdout: text(out[1]), stderr: text(out[2]), report, ms };
 }
 
-/** "go1.25.1" -> "1.25" */
+/** "go1.27.4" -> "1.27" */
 export function goLanguageVersion(goVersion: string): string {
   const m = goVersion.match(/^go(\d+)\.(\d+)/);
   return m ? `${m[1]}.${m[2]}` : '1.25';

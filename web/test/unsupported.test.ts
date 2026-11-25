@@ -17,12 +17,12 @@ describe('checkConfig', () => {
   });
 
   it('explains which linters do not work with default: all', () => {
-    const text = 'version: "2"\nlinters:\n  default: all\n  disable: [gomodguard]\n';
+    const text = 'version: "2"\nlinters:\n  default: all\n  disable: [gomodguard, gomodguard_v2]\n';
     const [d] = checkConfig(text);
     expect(d.severity).toBe('info');
     expect(d.message).toContain('gomoddirectives');
     expect(d.message).not.toContain('gomodguard');
-    expect(checkConfig('version: "2"\nlinters:\n  default: all\n  disable: [gomodguard, gomoddirectives]\n')).toEqual([]);
+    expect(checkConfig('version: "2"\nlinters:\n  default: all\n  disable: [gomodguard, gomodguard_v2, gomoddirectives]\n')).toEqual([]);
   });
 
   it('flags plugins, ruleguard, v1 configurations and YAML errors', () => {

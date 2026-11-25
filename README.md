@@ -6,7 +6,7 @@
 
 ## できること
 
-- golangci-lint v2.5.0（Go 1.25.1）による検査。結果はネイティブ版と同じです（`testdata/parity/` で確認しています）
+- golangci-lint v2.15.0（Go 1.27.4 でビルド）による検査。結果はネイティブ版と同じです（`testdata/parity/` で確認しています）
 - `.golangci.yml` の自由記述。書いた内容は書き換えずにそのまま使われます
 - 複数ファイル（`-- name.go --` で区切る txtar 形式）、同じモジュール内のパッケージ
 - URL での共有（コードと設定は URL の `#` 以降に圧縮して入り、サーバーには送られません）
@@ -16,7 +16,7 @@
 - import できるのは標準ライブラリと同じモジュール内のパッケージだけです（サードパーティモジュールには対応しません）
 - 動作確認しているブラウザは Google Chrome（デスクトップ版）です
 - 初回は約 25MB をダウンロードします（2 回目以降は Service Worker のキャッシュから読み込みます）
-- 一部の機能はブラウザでは動きません: `gomoddirectives`、`gomodguard`、gocritic の ruleguard、カスタムリンター（プラグイン）。設定に書くとエディタに警告が出ます
+- 一部の機能はブラウザでは動きません: `gomoddirectives`、`gomodguard`、`gomodguard_v2`、gocritic の ruleguard、カスタムリンター（プラグイン）。設定に書くとエディタに警告が出ます
 
 詳しくは [設計書](docs/design.md) を参照してください。
 
