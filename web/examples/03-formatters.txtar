@@ -1,0 +1,24 @@
+フォーマッタ
+goimports は import を整理し、gofumpt は gofmt より厳しく整形し、golines は長い行を指摘します。
+-- main.go --
+package main
+import (
+	"os"
+	"fmt"
+)
+func main() {
+	var name = strings.ToUpper(os.Args[0])
+	fmt.Println(name, len(os.Args), "a very long line that keeps going and going so that golines has something to say")
+}
+-- .golangci.yml --
+version: "2"
+linters:
+  default: none
+formatters:
+  enable:
+    - goimports
+    - gofumpt
+    - golines
+  settings:
+    golines:
+      max-len: 80

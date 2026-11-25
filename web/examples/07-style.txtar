@@ -1,0 +1,42 @@
+スタイルのリンター
+revive・gocritic・misspell など、コードの書き方を指摘するリンターの例です。
+-- main.go --
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+var ErrNotFound = errors.New("Not found.")
+
+type user struct {
+	ID   int
+	Name string
+}
+
+func findUser(users []user, id int) (*user, error) {
+	for i := 0; i < len(users); i++ {
+		if users[i].ID == id {
+			return &users[i], nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func main() {
+	u, err := findUser([]user{{1, "a"}}, 1)
+	if err != nil {
+		fmt.Println("occured:", err)
+		return
+	}
+	fmt.Println(u.Name)
+}
+-- .golangci.yml --
+version: "2"
+linters:
+  enable:
+    - revive
+    - gocritic
+    - misspell
+    - staticcheck

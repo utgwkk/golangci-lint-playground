@@ -1,4 +1,4 @@
-// Parity test: lints every testdata/parity/*.txtar with the native golangci-lint
+// Parity test: lints every testdata/parity/*.txtar and web/examples/*.txtar with the native golangci-lint
 // (same version, built by wasm/build.sh) and with the js/wasm build in Node.js,
 // and checks that the normalized issues are identical.
 //
@@ -8,7 +8,7 @@
 import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { VersionsManifest } from '../src/engine/client';
 import { parseReport, type Issue } from '../src/engine/normalize';
@@ -25,7 +25,8 @@ async function defaultVersionDir(): Promise<string> {
 
 const versionDir = resolve(process.argv[2] ?? (await defaultVersionDir()));
 const native = resolve(process.argv[3] ?? join(root, 'wasm/.build/golangci-lint'));
-const casesDir = join(root, 'testdata/parity');
+// Parity cases and the playground's samples (which must behave like native golangci-lint too).
+const caseDirs = [join(root, 'testdata/parity'), join(root, 'web/examples')];
 const run = promisify(execFile);
 
 function key(i: Issue): string {
@@ -65,9 +66,13 @@ async function lintNative(files: Record<string, string>, goVersion: string): Pro
 
 const rt = await loadRuntime(versionDir);
 let failed = 0;
-const names = (await readdir(casesDir)).filter((n) => n.endsWith('.txtar')).sort();
-for (const name of names) {
-  const files = filesFromText(await readFile(join(casesDir, name), 'utf8'));
+const cases: string[] = [];
+for (const dir of caseDirs) {
+  for (const name of (await readdir(dir)).filter((n) => n.endsWith('.txtar')).sort()) cases.push(join(dir, name));
+}
+const names = cases.map((c) => relative(root, c));
+for (const [i, name] of names.entries()) {
+  const files = filesFromText(await readFile(cases[i], 'utf8'));
   const [expected, actual] = [await lintNative(files, rt.goVersion), (await rt.run(files)).issues];
   const want = new Set((expected ?? []).map(key));
   const got = new Set((actual ?? []).map(key));

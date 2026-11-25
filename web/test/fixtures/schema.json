@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "linter-names": { "enum": ["errcheck", "govet", "gocritic", "staticcheck"] },
+    "settings": {
+      "definitions": {
+        "govetSettings": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable-all": { "description": "Enable all analyzers.", "type": "boolean", "default": false },
+            "enable": { "type": "array", "items": { "enum": ["printf", "shadow"] }, "uniqueItems": true }
+          }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version"],
+  "properties": {
+    "version": { "type": "string", "default": "2" },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout": { "description": "Timeout for total work.", "type": "string", "pattern": "^\\d+[smh]$" },
+        "concurrency": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "linters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": { "enum": ["standard", "all", "none", "fast"] },
+        "enable": { "description": "List of enabled linters.", "type": "array", "items": { "$ref": "#/definitions/linter-names" } },
+        "settings": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "govet": { "$ref": "#/definitions/settings/definitions/govetSettings" } }
+        },
+        "exclusions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": { "type": "string" },
+                  "linters": { "type": "array", "items": { "$ref": "#/definitions/linter-names" } },
+                  "text": { "type": "string" }
+                },
+                "anyOf": [{ "required": ["path"] }, { "required": ["linters"] }]
+              }
+            }
+          }
+        }
+      }
+    },
+    "severity": {
+      "type": "object",
+      "properties": {
+        "default": { "anyOf": [{ "enum": ["error", "warning"] }, { "type": "integer" }] }
+      },
+      "patternProperties": { "^x-": { "type": "string" } }
+    }
+  }
+}

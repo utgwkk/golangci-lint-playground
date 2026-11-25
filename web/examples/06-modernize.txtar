@@ -1,0 +1,39 @@
+新しい書き方への置き換え（modernize）
+modernize は、新しい Go の機能や標準ライブラリで書き直せる箇所を見つけます。
+-- main.go --
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func contains(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+func main() {
+	for i := 0; i < 3; i++ {
+		fmt.Println(i)
+	}
+	m := 10
+	if m > 5 {
+		m = 5
+	}
+	parts := strings.Split("a,b,c", ",")
+	for _, p := range parts {
+		fmt.Println(p)
+	}
+	fmt.Println(m, contains(parts, "b"))
+}
+-- .golangci.yml --
+version: "2"
+linters:
+  default: none
+  enable:
+    - modernize

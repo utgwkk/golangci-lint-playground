@@ -17,6 +17,12 @@
     <button id="run" class="primary" disabled title="Ctrl+Enter / ⌘+Enter">Run</button>
     <button id="cancel" hidden>Cancel</button>
     <button id="share" title="Copy a link to this code and configuration">Share</button>
+    <label class="samples">
+      <span class="visually-hidden">サンプル</span>
+      <select id="sample">
+        <option value="">サンプルを開く…</option>
+      </select>
+    </label>
     <div id="status" class="status" role="status" aria-live="polite">
       <progress id="progress" hidden></progress>
       <span id="status-text">読み込み中…</span>
@@ -25,16 +31,18 @@
   <div id="notice" class="notice" hidden></div>
   <main class="layout">
     <section class="pane code-pane" aria-label="Go code">
-      <div class="pane-header">
-        <span>Go</span>
-        <span class="hint">複数ファイルは <code>-- name.go --</code> 区切り（txtar）</span>
+      <div class="pane-header tabs-header">
+        <div id="tabs" class="tabs" role="tablist" aria-label="ファイル"></div>
       </div>
       <div id="code" class="editor"></div>
     </section>
     <section class="pane config-pane" aria-label=".golangci.yml">
       <div class="pane-header">
         <span>.golangci.yml</span>
-        <button id="reset-config" class="link">デフォルトに戻す</button>
+        <span class="header-actions">
+          <button id="open-tools" class="link" disabled>リンターを選ぶ</button>
+          <button id="reset-config" class="link">デフォルトに戻す</button>
+        </span>
       </div>
       <div id="config" class="editor"></div>
     </section>
@@ -47,6 +55,7 @@
       </details>
     </section>
   </main>
+  <dialog id="tools-dialog" class="tools-dialog" aria-label="リンターとフォーマッタ"></dialog>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

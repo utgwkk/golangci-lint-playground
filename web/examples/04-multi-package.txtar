@@ -1,0 +1,40 @@
+複数のパッケージ
+go.mod と複数のファイル・パッケージを使う例です。タブでファイルを切り替えられます。
+-- go.mod --
+module example.com/app
+
+go 1.27
+-- main.go --
+package main
+
+import (
+	"fmt"
+
+	"example.com/app/internal/store"
+)
+
+func main() {
+	s := store.New()
+	s.Put("k", "v")
+	fmt.Println(s.Get("k"))
+}
+-- internal/store/store.go --
+package store
+
+import "os"
+
+type Store struct{ m map[string]string }
+
+func New() *Store { return &Store{m: map[string]string{}} }
+
+func (s *Store) Put(k, v string) {
+	s.m[k] = v
+	os.Remove("/tmp/" + k)
+}
+
+func (s *Store) Get(k string) string { return s.m[k] }
+-- .golangci.yml --
+version: "2"
+linters:
+  enable:
+    - revive

@@ -1,17 +1,18 @@
 import './style.css';
-import { setDiagnostics, type Diagnostic } from '@codemirror/lint';
-import { EditorSelection } from '@codemirror/state';
+import type { Diagnostic } from '@codemirror/lint';
 import type { EditorView } from '@codemirror/view';
+import { fetchCatalog } from './config/catalog';
 import { CancelledError, Engine, fetchVersions, type VersionInfo, type VersionsManifest } from './engine/client';
 import type { Issue } from './engine/normalize';
 import type { Files } from './engine/protocol';
 import { CONFIG_FILE } from './engine/runner';
-import { DEFAULT_CODE, DEFAULT_CONFIG } from './samples';
+import { DEFAULT_CODE, DEFAULT_CONFIG, SAMPLES } from './samples';
 import { decodeSnapshot, encodeSnapshot, type Snapshot } from './share';
-import { filesFromText } from './txtar';
-import { createConfigEditor, createGoEditor, setText } from './ui/editors';
-import { issueRange } from './ui/positions';
+import { createConfigEditor, createGoEditor, setConfigCatalog, setText } from './ui/editors';
+import { FileTabs } from './ui/files';
+import { fileRange } from './ui/positions';
 import { renderIssues, renderMessage } from './ui/results';
+import { ToolsPanel } from './ui/toolspanel';
 
 type State = 'loading' | 'ready' | 'running' | 'error';
 
@@ -29,6 +30,8 @@ const ui = {
   logDetails: $<HTMLDetailsElement>('log-details'),
   log: $('log'),
   resetConfig: $<HTMLButtonElement>('reset-config'),
+  openTools: $<HTMLButtonElement>('open-tools'),
+  sample: $<HTMLSelectElement>('sample'),
 };
 
 const STORAGE_KEY = 'golangci-lint-playground:draft';
@@ -71,7 +74,7 @@ function saveDraft(): void {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ code: codeEditor.state.doc.toString(), config: configEditor.state.doc.toString() }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ code: tabs.text(), config: configEditor.state.doc.toString() }));
     } catch {
       // Storage may be unavailable (private mode, blocked site data).
     }
@@ -81,42 +84,63 @@ function saveDraft(): void {
 // ---- editors ----
 
 const draft = loadDraft();
-const codeEditor: EditorView = createGoEditor($('code'), draft?.code ?? DEFAULT_CODE, () => void run(), saveDraft);
+const goEditor = createGoEditor($('code'), () => void run(), saveDraft);
+const tabs = new FileTabs({ view: goEditor.view, container: $('tabs'), createState: goEditor.createState, onChange: saveDraft });
+tabs.load(draft?.code ?? DEFAULT_CODE);
 const configEditor: EditorView = createConfigEditor($('config'), draft?.config ?? DEFAULT_CONFIG, () => void run(), saveDraft);
 
+const toolsPanel = new ToolsPanel({
+  dialog: $<HTMLDialogElement>('tools-dialog'),
+  getText: () => configEditor.state.doc.toString(),
+  apply: (edits) => configEditor.dispatch({ changes: edits }),
+});
+
+/** What was last loaded (draft, sample or shared link), to tell whether the user changed it. */
+let baseline = { code: tabs.text(), config: configEditor.state.doc.toString() };
+function isModified(): boolean {
+  return tabs.text() !== baseline.code || configEditor.state.doc.toString() !== baseline.config;
+}
+
+function load(code: string, config: string): void {
+  tabs.load(code);
+  setText(configEditor, config);
+  baseline = { code: tabs.text(), config };
+  renderMessage(ui.results, 'Run を押すと golangci-lint で検査します。');
+  ui.summary.textContent = '';
+  ui.logDetails.hidden = true;
+  saveDraft();
+}
+
 function select(issue: Issue): void {
-  const r = issueRange(codeEditor.state.doc.toString(), issue);
-  if (!r) return;
-  const len = codeEditor.state.doc.length;
-  codeEditor.dispatch({
-    selection: EditorSelection.range(Math.min(r.from, len), Math.min(r.to, len)),
-    scrollIntoView: true,
-  });
-  codeEditor.focus();
+  const content = tabs.content(issue.file);
+  if (content === null) return;
+  const r = fileRange(content, issue);
+  tabs.select(issue.file, r.from, r.to);
 }
 
 function showDiagnostics(issues: Issue[]): void {
-  const text = codeEditor.state.doc.toString();
-  const len = codeEditor.state.doc.length;
-  const diagnostics: Diagnostic[] = [];
+  const byFile = new Map<string, Diagnostic[]>();
   for (const issue of issues) {
-    const r = issueRange(text, issue);
-    if (!r) continue;
-    diagnostics.push({
-      from: Math.min(r.from, len),
-      to: Math.min(r.to, len),
+    const content = tabs.content(issue.file);
+    if (content === null) continue;
+    const r = fileRange(content, issue);
+    const list = byFile.get(issue.file) ?? [];
+    list.push({
+      from: Math.min(r.from, content.length),
+      to: Math.min(r.to, content.length),
       severity: issue.linter === 'typecheck' ? 'error' : 'warning',
       source: issue.linter,
       message: issue.message,
     });
+    byFile.set(issue.file, list);
   }
-  codeEditor.dispatch(setDiagnostics(codeEditor.state, diagnostics));
+  tabs.setDiagnostics(byFile);
 }
 
 // ---- running ----
 
 function collectFiles(): Files {
-  const files = filesFromText(codeEditor.state.doc.toString());
+  const files = tabs.contents();
   const config = configEditor.state.doc.toString();
   if (config.trim()) files[CONFIG_FILE] = config;
   else delete files[CONFIG_FILE];
@@ -126,7 +150,7 @@ function collectFiles(): Files {
 async function run(): Promise<void> {
   if (state !== 'ready' || !engine) return;
   setState('running');
-  codeEditor.dispatch(setDiagnostics(codeEditor.state, []));
+  tabs.setDiagnostics(new Map());
   const started = performance.now();
   const timer = setInterval(() => status(`検査中… ${((performance.now() - started) / 1000).toFixed(1)} 秒`), 100);
   status('検査中…');
@@ -188,7 +212,7 @@ function snapshot(): Snapshot {
   return {
     schema: 1,
     version: engine?.info.version ?? manifest?.default ?? '',
-    code: codeEditor.state.doc.toString(),
+    code: tabs.text(),
     config: configEditor.state.doc.toString(),
   };
 }
@@ -210,8 +234,7 @@ async function loadFromHash(): Promise<string | null> {
   try {
     const s = await decodeSnapshot(location.hash);
     if (!s) return null;
-    setText(codeEditor, s.code);
-    setText(configEditor, s.config);
+    load(s.code, s.config);
     return s.version;
   } catch (err) {
     notice(`共有 URL を読み込めませんでした: ${(err as Error).message}`);
@@ -227,8 +250,24 @@ function isChrome(): boolean {
   return /Chrome\//.test(navigator.userAgent) && !/Edg\/|OPR\//.test(navigator.userAgent);
 }
 
+/** Loads the schema and the lists of linters/formatters of a version (not required to run). */
+async function loadCatalog(info: VersionInfo): Promise<void> {
+  ui.openTools.disabled = true;
+  try {
+    const catalog = await fetchCatalog(new URL(info.path, base));
+    setConfigCatalog(configEditor, catalog);
+    toolsPanel.setCatalog(catalog);
+    ui.openTools.disabled = false;
+  } catch (err) {
+    setConfigCatalog(configEditor, null);
+    toolsPanel.setCatalog(null);
+    console.warn('could not load the configuration schema', err);
+  }
+}
+
 async function loadEngine(info: VersionInfo): Promise<void> {
   setState('loading');
+  void loadCatalog(info);
   const mb = (n: number) => (n / 1e6).toFixed(1);
   ui.progress.hidden = false;
   engine = new Engine(base, info);
@@ -265,6 +304,18 @@ ui.run.addEventListener('click', () => void run());
 ui.cancel.addEventListener('click', () => void cancel());
 ui.share.addEventListener('click', () => void share());
 ui.resetConfig.addEventListener('click', () => setText(configEditor, DEFAULT_CONFIG));
+ui.openTools.addEventListener('click', () => toolsPanel.open());
+
+for (const sample of SAMPLES) ui.sample.append(new Option(sample.title, sample.id));
+ui.sample.addEventListener('change', () => {
+  const sample = SAMPLES.find((s) => s.id === ui.sample.value);
+  ui.sample.value = '';
+  if (!sample) return;
+  if (isModified() && !confirm(`編集中の内容を「${sample.title}」で置き換えますか？`)) return;
+  load(sample.code, sample.config);
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  status(`サンプル「${sample.title}」: ${sample.description}`);
+});
 ui.version.addEventListener('change', () => {
   const info = manifest?.versions.find((v) => v.version === ui.version.value);
   if (info) void loadEngine(info).catch(fail);
