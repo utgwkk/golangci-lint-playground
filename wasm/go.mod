@@ -4,6 +4,8 @@ go 1.26.0
 
 toolchain go1.27.4
 
+tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+
 require github.com/golangci/golangci-lint/v2 v2.15.0
 
 require (
