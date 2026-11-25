@@ -1,5 +1,7 @@
 // Writes <distDir>/versions.json from the built version directories
-// (<distDir>/v/<version>/), including sizes and SHA-256 of the assets.
+// (<distDir>/v/<version>/), including the size and SHA-256 of every file.
+// The web app puts the hash in the files' URLs, so that rebuilt files are
+// never served from a stale cache (see assetUrl in src/engine/client.ts).
 //
 // usage: tsx scripts/write-versions.ts <distDir>
 
@@ -9,7 +11,6 @@ import { join, resolve } from 'node:path';
 import type { VersionInfo, VersionsManifest } from '../src/engine/client';
 
 const distDir = resolve(process.argv[2] ?? '');
-const ASSETS = ['golangci-lint.wasm.bin', 'std.bundle.bin', 'cache.bundle.bin'];
 
 function semver(v: string): number[] {
   return v.replace(/^v/, '').split(/[.-]/).map((x) => parseInt(x, 10) || 0);
@@ -20,9 +21,9 @@ for (const name of await readdir(join(distDir, 'v'))) {
   const dir = join(distDir, 'v', name);
   const build = JSON.parse(await readFile(join(dir, 'build.json'), 'utf8')) as { version: string; goVersion: string };
   const files: VersionInfo['files'] = {};
-  for (const asset of ASSETS) {
-    const data = await readFile(join(dir, asset));
-    files[asset] = { size: (await stat(join(dir, asset))).size, sha256: createHash('sha256').update(data).digest('hex') };
+  for (const file of (await readdir(dir)).sort()) {
+    const data = await readFile(join(dir, file));
+    files[file] = { size: (await stat(join(dir, file))).size, sha256: createHash('sha256').update(data).digest('hex') };
   }
   versions.push({ version: build.version, goVersion: build.goVersion, path: `v/${name}/`, files });
 }
