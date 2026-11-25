@@ -425,3 +425,35 @@ test('refuses quick fixes for code changed after the run', async ({ page }) => {
   await expect(page.locator('#status-text')).toContainText('Run again.');
   await expect(page.locator('#code .cm-content')).toContainText('fmt.Println("occured")');
 });
+
+test('links to the licenses and the source code of golangci-lint', async ({ page }) => {
+  await open(page);
+  await page.click('#open-licenses');
+  const dialog = page.locator('#licenses-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('GNU General Public License version 3');
+
+  const href = async (name: string | RegExp) => (await dialog.getByRole('link', { name }).getAttribute('href'))!;
+  await expect(dialog.getByRole('link', { name: 'https://github.com/utgwkk/golangci-lint-playground' })).toBeVisible();
+
+  // The web app's licenses: the MIT license and the bundled npm packages.
+  const app = await page.request.get(await href(/npm packages/));
+  expect(app.ok()).toBe(true);
+  const appText = await app.text();
+  expect(appText).toContain('MIT License');
+  expect(appText).toContain('@codemirror/view');
+
+  // golangci-lint's licenses and notices, and the complete source of the wasm build.
+  const notices = await page.request.get(await href(/golangci-lint and its dependencies/));
+  expect(notices.ok()).toBe(true);
+  const noticesText = await notices.text();
+  expect(noticesText).toContain('GNU GENERAL PUBLIC LICENSE');
+  expect(noticesText).toContain('golang.org/x/tools');
+
+  const source = await page.request.get(await href(/Complete source code/));
+  expect(source.ok()).toBe(true);
+  expect((await source.body()).length).toBeGreaterThan(1_000_000);
+
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+});

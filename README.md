@@ -63,7 +63,7 @@ cd web && npm run build && npm run e2e
 | `wasm/` | Pipeline that builds golangci-lint for js/wasm (patches to `golang.org/x/tools`, standard library bundle) |
 | `web/` | Web app (Vite + TypeScript + CodeMirror 6). `src/engine/` runs golangci-lint in a Web Worker |
 | `testdata/parity/` | Test cases comparing the native and WebAssembly results (the samples in `web/examples/` are checked too) |
-| `scripts/` | Asset build |
+| `scripts/` | Asset build, design document sync check |
 | `docs/` | Design document (`design.md` in English, `design.ja.md` in Japanese) |
 
 On pushes to `main`, GitHub Actions runs the tests and deploys to GitHub Pages (set Settings → Pages → Source to "GitHub Actions").
@@ -72,4 +72,11 @@ Whether all CI jobs succeeded is reported as a single check, `CI success`. To pr
 
 ## License
 
-MIT
+This repository is licensed under the [MIT license](LICENSE), except the patches to `golang.org/x/tools` in `wasm/xtools/patches/`, which are under the BSD-3-Clause license of `golang.org/x/tools` ([wasm/xtools/LICENSE](wasm/xtools/LICENSE)).
+
+golangci-lint is licensed under the [GNU General Public License version 3](https://github.com/golangci/golangci-lint/blob/main/LICENSE). This repository contains none of its code, but the deployed playground distributes a WebAssembly build of it, so the build publishes, next to the binary in `v/<version>/`:
+
+- `golangci-lint-source.tar.gz`: the complete source code the binary is built from (all modules vendored, including the patched `golang.org/x/tools`) with build instructions. `wasm/build.sh` builds the binary from exactly this tree, offline.
+- `licenses.txt`: every module in the binary with its license, followed by their license, NOTICE and PATENTS files and Go's license.
+
+The web app's own `licenses.txt` (at the site root) contains the MIT license and the licenses of the npm packages it bundles. The "Licenses" button in the playground links to all of these. See [section 12 of the design document](docs/design.md#12-licenses) for details.

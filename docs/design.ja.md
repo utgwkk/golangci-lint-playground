@@ -150,6 +150,7 @@ golangci-lint のネイティブ版（v2.5.0・v2.15.0）と、js/wasm 版の Po
     - YAML の部分書き換えは、構文木から該当箇所の位置を求めてテキストを最小限に差し替える（`yamledit.ts`）。YAML ライブラリでドキュメント全体を書き戻すと、引用符・インデント・空行などがユーザーの書き方から変わってしまうため。ブロック形式とフロー形式の配列、キーの新規作成（親を含む）、空になった配列と親の削除に対応する
     - 非対応の設定（[4.6](#46-ブラウザ内で動かない機能の扱い)）や設定エラーは、YAML エディタの該当行にマーカーで表示する
     - 「Reset to default」ボタンを用意する
+  - ツールバーの右端の `Licenses` ボタンで、ライセンスとソースコードのダイアログを開く（[12 章](#12-ライセンス)）
   - 右下 / 下部: 結果パネル
     - Issue 一覧（リンター名・メッセージ・位置）。クリックで該当行へジャンプ
     - エディタ内に波線マーカー、ホバーでメッセージ
@@ -234,13 +235,14 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 
 | 手順 | 内容 | 出力 |
 | --- | --- | --- |
-| 1. x/tools のパッチ | golangci-lint の `go.mod` が要求する `golang.org/x/tools` をモジュールキャッシュからコピーし、`wasm/xtools/patches/` のパッチを当てて `wasm/xtools/overlay/` のファイルを追加する。パッチは 2 つ: (a) `go/packages` の `defaultDriver` からプロセス内ドライバ（`inproc_js.go`、import 位置付きのエラーも返す）を呼ぶフック、(b) `internal/imports` の `ProcessEnv.init` で `go env` の代わりに値を返すフック（`goenv_js.go`。GOPATH モードで `$GOROOT/src` を探すので `go` コマンドは不要）。`-modfile` の `replace` で差し替える | — |
-| 2. WASM ビルド | `GOOS=js GOARCH=wasm go build -trimpath -ldflags='-s -w'` | `golangci-lint.wasm.bin`（gzip、約 15MB） |
+| 1. x/tools のパッチ | golangci-lint の `go.mod` が要求する `golang.org/x/tools` をモジュールキャッシュからコピーし、`wasm/xtools/patches/` のパッチを当てて `wasm/xtools/overlay/` のファイルを追加する。パッチは 2 つ: (a) `go/packages` の `defaultDriver` からプロセス内ドライバ（`inproc_js.go`、import 位置付きのエラーも返す）を呼ぶフック、(b) `internal/imports` の `ProcessEnv.init` で `go env` の代わりに値を返すフック（`goenv_js.go`。GOPATH モードで `$GOROOT/src` を探すので `go` コマンドは不要）。手順 2 のソース一式の `go.mod` に `replace` を書いて差し替える | — |
+| 2. WASM ビルド | 全モジュールを（パッチを当てた x/tools を含めて）vendor したソース一式を作り、そこからネットワークを使わずにビルドする: `GOOS=js GOARCH=wasm GOFLAGS=-mod=vendor go build -trimpath -ldflags='-s -w'` | `golangci-lint.wasm.bin`（gzip、約 15MB） |
 | 3. 標準ライブラリ | `go list -export -json std`（`CGO_ENABLED=0 GOOS=linux GOARCH=amd64`）から、ソース・export data（`__.PKGDEF` のみ）・パッケージ構成のマニフェストを 1 ファイルにまとめる | `std.bundle.bin`（gzip、約 9.4MB） |
 | 4. キャッシュ | ブラウザと同じ MemFS・同じパスで、Node 上で WASM 版を動かし、公開されている標準ライブラリを全部 import するプログラムを標準設定と `--default=all` で検査する | `cache.bundle.bin`（gzip、約 0.3MB） |
 | 5. メタデータ | 同じバージョンのネイティブ版（手順 2 と同時にビルドし、パリティテストにも使う）で `help linters --json` / `help formatters --json` を実行。モジュール内の `jsonschema/golangci.jsonschema.json` を取り出す | `linters.json`、`formatters.json`、`schema.json`、`build.json`（バージョンと Go のバージョン） |
-| 6. マニフェスト | 各アセットのサイズと SHA-256 を書き出す | `versions.json` |
-| 7. 検証 | テストスイート（[9 章](#9-テスト戦略)）を実行する | — |
+| 6. ソースとライセンス | 手順 2 のビルド元の vendor したソース一式をアーカイブにし（`golangci-lint-source.tar.gz`）、バイナリにリンクされる全モジュールのライセンスを書き出す（`wasm/tools/mknotices`。[12 章](#12-ライセンス)） | `golangci-lint-source.tar.gz`、`licenses.txt` |
+| 7. マニフェスト | 各アセットのサイズと SHA-256 を書き出す | `versions.json` |
+| 8. 検証 | テストスイート（[9 章](#9-テスト戦略)）を実行する | — |
 
 - **Go ツールチェインの固定**: Go の最新の安定版（現在は go1.27.4）でビルドし、手順 3 の標準ライブラリも同じ Go から作る（[1.5](#15-スコープの決定事項)。当初は golangci-lint の公式リリースと同じ Go にする方針だった）。`wasm/go.mod` の `toolchain` 行で指定し、`wasm/build.sh` が `GOTOOLCHAIN` で強制する。golangci-lint はその Go に対応したバージョンが必要（[2 章](#2-前提となる事実検証済み)）。Go や golangci-lint を上げたときは、パリティテストでネイティブ版（同じ Go でビルド）と結果が一致すること、[4.6](#46-ブラウザ内で動かない機能の扱い) の非対応一覧が変わっていないことを確認する
 - **パッチの追従**: x/tools のパッチは `defaultDriver` の冒頭に数行足すだけなので、x/tools が更新されても当たり続ける見込みが高い。当たらなくなったらビルドが失敗するので、CI で気づける
@@ -316,7 +318,9 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 │   ├── xtools/
 │   │   ├── patches/               # golang.org/x/tools へのパッチ
 │   │   └── overlay/               # x/tools に追加するファイル（inproc_js.go, goenv_js.go）
-│   └── tools/mkbundle/            # 標準ライブラリのバンドル生成
+│   └── tools/
+│       ├── mkbundle/              # 標準ライブラリのバンドル生成
+│       └── mknotices/             # WASM 版の licenses.txt の生成（ライセンスの確認も行う）
 ├── web/                           # Web アプリ（Vite + TypeScript + CodeMirror 6）
 │   ├── index.html
 │   ├── src/
@@ -327,7 +331,7 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 │   │   ├── share.ts, txtar.ts, samples.ts
 │   │   └── sw.ts                  # Service Worker
 │   ├── examples/                  # サンプル集（txtar）
-│   ├── scripts/                   # キャッシュ生成、versions.json、パリティテスト（Node.js）
+│   ├── scripts/                   # キャッシュ生成、versions.json、パリティテスト、Web アプリの licenses.txt（Node.js）
 │   ├── test/                      # 単体テスト（Vitest）
 │   └── e2e/                       # E2E テスト（Playwright）
 ├── scripts/
@@ -379,9 +383,9 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 | 種類 | 内容 | 実行 |
 | --- | --- | --- |
 | MemFS の互換テスト | 同じ操作を MemFS と `node:fs`（一時ディレクトリ）の両方に実行し、結果とエラーコード（`ENOENT`・`EEXIST`・`EISDIR`・`ENOTDIR`・`ENOTEMPTY`・`EBADF` など）が一致することを確認する | `npm test`（`web/test/gofs.test.ts`） |
-| 単体テスト | 結果の正規化（`typecheck` の位置補正、`SuggestedFixes` のデコード、ログの整理）、txtar、共有 URL の往復、UTF-8 の列位置の変換、非対応設定の検出、スキーマのたどり方と検証（テスト用の小さなスキーマで）、カーソル位置の YAML パスの判定、YAML の部分書き換え（コメント・書式が保たれること）、リンターの有効/無効の判定と切り替え | `npm test` |
+| 単体テスト | 結果の正規化（`typecheck` の位置補正、`SuggestedFixes` のデコード、ログの整理）、txtar、共有 URL の往復、UTF-8 の列位置の変換、非対応設定の検出、スキーマのたどり方と検証（テスト用の小さなスキーマで）、カーソル位置の YAML パスの判定、YAML の部分書き換え（コメント・書式が保たれること）、リンターの有効/無効の判定と切り替え、バンドルされたモジュールが属する npm パッケージの判定（`licenses.txt` 用） | `npm test` |
 | ネイティブとの一致テスト | `testdata/parity/*.txtar` と `web/examples/*.txtar`（サンプル集）を、同じバージョンのネイティブ版と WASM 版（Node.js 上）で検査し、Issue（自動修正の内容を含む）が完全に一致することを確認する。各ケースは `--fix` 付きでも実行し、修正後のファイルと残った指摘も一致することを確認する。標準設定、全リンター＋全フォーマッタ、型エラー、複数パッケージ、フォーマッタ、設定の自由記述、nolint、gci の localmodule、自動修正（マルチバイト文字の後ろの修正を含む）の 9 ケースと、サンプル 7 つ | `npm run parity` |
-| E2E | Playwright（Chromium）で、サンプルの検査とエディタのマーカー、Issue クリックでの移動、自由記述した設定（`output.*` を含む）の反映、非対応設定の警告、標準ライブラリ以外の import のエラー位置、ファイルタブ（追加・名前の変更・削除、別ファイルの指摘への移動）、不正な設定のエラー表示、共有 URL（複数ファイル、自動実行しないこと）、キャンセル、Service Worker のキャッシュ（再デプロイで作り直されたアセットを、強制再読み込みなしで取り直せること）、リンター選択ダイアログ（YAML の部分書き換え）、スキーマによる補完・警告・ホバー、サンプル集、goimports による整形（足りない import の追加、全タブ、元に戻す、ショートカット、構文エラーのファイル）、`Fix` によるまとめての修正（元に戻す）、Quick Fix（結果一覧とエディタのポップアップから適用、再検査、検査後に編集したときは適用しないこと）の 20 シナリオ（カーソル行の選択の見え方をライト・ダークで確かめる 2 件を含む） | `npm run e2e` |
+| E2E | Playwright（Chromium）で、サンプルの検査とエディタのマーカー、Issue クリックでの移動、自由記述した設定（`output.*` を含む）の反映、非対応設定の警告、標準ライブラリ以外の import のエラー位置、ファイルタブ（追加・名前の変更・削除、別ファイルの指摘への移動）、不正な設定のエラー表示、共有 URL（複数ファイル、自動実行しないこと）、キャンセル、Service Worker のキャッシュ（再デプロイで作り直されたアセットを、強制再読み込みなしで取り直せること）、リンター選択ダイアログ（YAML の部分書き換え）、スキーマによる補完・警告・ホバー、サンプル集、goimports による整形（足りない import の追加、全タブ、元に戻す、ショートカット、構文エラーのファイル）、`Fix` によるまとめての修正（元に戻す）、Quick Fix（結果一覧とエディタのポップアップから適用、再検査、検査後に編集したときは適用しないこと）、ライセンスのダイアログ（ライセンスとソースアーカイブを取得できること）の 21 シナリオ（カーソル行の選択の見え方をライト・ダークで確かめる 2 件を含む） | `npm run e2e` |
 | 設計書の同期 | `docs/design.md` と `docs/design.ja.md` の見出し（レベルと章番号）が一致すること | `node scripts/check-design-sync.mjs` |
 | CI | GitHub Actions で、型チェック・単体テスト・アセットのビルドを並列に、アセットができたらパリティテストと E2E を並列に実行する（[7 章](#7-デプロイ構成)） | `.github/workflows/ci.yml` |
 
@@ -433,6 +437,25 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 - **重いリンター構成**: `--default=all` ではキャッシュありでも約 7 秒かかる（Node での計測）。待ち時間の見せ方と、どこまでを許容範囲とするか
 - **Go バージョンの選択**: golangci-lint のバージョンとは別に、解析対象の Go バージョン（`go.mod` の `go` 行）を選べるようにするか。標準ライブラリのバンドルが Go のバージョンごとに必要になるため、当面は「golangci-lint バージョンごとに 1 つの Go」で固定する
 - **i18n**: UI は英語のみ。ほかの言語（日本語など）にも対応するか
+
+
+## 12. ライセンス
+
+| 構成要素 | ライセンス | 配布される場所 |
+| --- | --- | --- |
+| このリポジトリ（Web アプリ・ビルドスクリプト・テスト） | MIT（`LICENSE`） | リポジトリ、サイトの Web アプリ |
+| `golang.org/x/tools` へのパッチ（`wasm/xtools/patches/`） | x/tools と同じ BSD-3-Clause（`wasm/xtools/LICENSE`） | リポジトリ、WASM 版に組み込まれる |
+| golangci-lint と依存モジュール | golangci-lint は GPL-3.0、依存モジュールはそれぞれのライセンス | サイトの `v/<version>/`（WASM 版、`schema.json`） |
+| Go（ランタイム・標準ライブラリ・`wasm_exec.js`） | BSD-3-Clause | サイトの `v/<version>/`（`std.bundle.bin` にソースが入っている） |
+| Web アプリに同梱する npm パッケージ | MIT・ISC（20 パッケージ） | サイトの Web アプリ |
+
+- **リポジトリは MIT のまま**: リポジトリには golangci-lint のコードは含まれず、`go.mod` / `go.sum` で参照しているだけ。Web アプリと golangci-lint は別のプログラムで、Web アプリは golangci-lint をコマンドライン引数で起動し、メモリ上のファイルシステムを通じてファイルをやり取りする（OS 上でコマンドを実行するのと同じ関係）。そのため Web アプリは golangci-lint に基づく著作物ではなく、サイトは両者を「集合物」として配布している
+- **サイトは GPL-3.0 のバイナリを配布している**: WASM 版は golangci-lint に基づく著作物なので、GPL-3.0 のオブジェクトコード配布の条件を満たす
+  - **対応するソース**（GPL-3.0 第 6 条 (d)）: `v/<version>/` のバイナリの隣に `golangci-lint-source.tar.gz` を置く。`go.mod` / `go.sum`、すべてのモジュールを vendor したもの（パッチを当てた `golang.org/x/tools` を含む）、ビルド手順の README、playground のビルドスクリプトとパッチが入っている。`wasm/build.sh` はこのソース一式から `-mod=vendor` でネットワークを使わずにビルドするので、アーカイブとバイナリが食い違うことはない（公開したアーカイブからビルドし直すと、`golangci-lint.wasm.bin` がバイト単位で一致する）。アーカイブは再現可能（エントリの並びとタイムスタンプを固定）で、中身が変わったときだけハッシュが変わる。MPL-2.0 のモジュールのソースもこれで提供される（MPL-2.0 第 3.2 条）
+  - **ライセンス文と告知**: `v/<version>/licenses.txt` を、vendor したソースから `wasm/tools/mknotices` で生成する。バイナリにリンクされる全モジュールとそのライセンスの一覧に続けて、各モジュールの LICENSE・NOTICE（Apache-2.0 第 4 条 (d)）・PATENTS と、Go のライセンスを載せる
+  - **改変の告知**（GPL-3.0 第 5 条 (a)）: golangci-lint 本体は改変していないが、`golang.org/x/tools` にはパッチを当てている。`licenses.txt` とアーカイブの README にその旨と、パッチを最後に変更した日付を書く
+- **ライセンスの確認**: golangci-lint v2.15.0 の時点で、バイナリにリンクされる 206 モジュールのライセンスは MIT（133）、Apache-2.0（27）、BSD-3-Clause（26）、GPL-3.0（7）、MPL-2.0（6）、BSD-2-Clause（2）、MIT と BSD-3-Clause（2）・Apache-2.0（2）・Unlicense（1）のデュアルまたは併記。いずれも GPL-3.0 と両立する。`mknotices` は両立すると確認済みのライセンスだけを受け付け、それ以外のライセンスやライセンスのないモジュールがあるとビルドを失敗させる。golangci-lint を上げたときに、確認していないライセンスが紛れ込むことはない。Web アプリに同梱する npm パッケージについては、Vite プラグイン `web/scripts/licenses-plugin.ts` が同じ確認をし、Web アプリの `licenses.txt`（playground の MIT ライセンスと各パッケージのライセンスファイル）を書き出す
+- **UI**: ツールバーの `Licenses` ボタンでダイアログを開き、リポジトリ・2 つの `licenses.txt`・選択中のバージョンのソースアーカイブへのリンクを表示する
 
 ## 付録 A: WASM 方式の PoC 結果
 
