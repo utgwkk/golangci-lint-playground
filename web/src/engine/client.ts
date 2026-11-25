@@ -1,7 +1,7 @@
 // Main-thread side of the engine: downloads and verifies the assets of a
 // golangci-lint version, compiles the WebAssembly module, and drives the worker.
 
-import type { Files, FormatResult, FromWorker, LintResult, ToWorker } from './protocol';
+import type { FixResult, Files, FormatResult, FromWorker, LintResult, ToWorker } from './protocol';
 
 export interface AssetInfo {
   size: number;
@@ -144,7 +144,7 @@ export class Engine {
         const msg = e.data;
         if (msg.type === 'ready') {
           resolve();
-        } else if (msg.type === 'result' || msg.type === 'formatted') {
+        } else if (msg.type === 'result' || msg.type === 'formatted' || msg.type === 'fixed') {
           const { type: _type, id, ...result } = msg;
           this.pending.get(id)?.resolve(result as never);
           this.pending.delete(id);
@@ -164,7 +164,7 @@ export class Engine {
     return this.ready;
   }
 
-  private request<T>(type: 'lint' | 'format', files: Files): Promise<T> {
+  private request<T>(type: 'lint' | 'format' | 'fix', files: Files): Promise<T> {
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (r: never) => void, reject });
@@ -175,6 +175,12 @@ export class Engine {
   async lint(files: Files): Promise<LintResult> {
     await this.ready;
     return this.request<LintResult>('lint', files);
+  }
+
+  /** Lints with --fix: returns the fixed files and the issues that remain. */
+  async fix(files: Files): Promise<FixResult> {
+    await this.ready;
+    return this.request<FixResult>('fix', files);
   }
 
   /** Formats the Go files with goimports (see FORMAT_ARGS). */

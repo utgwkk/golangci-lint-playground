@@ -3,9 +3,10 @@ import type { Diagnostic } from '@codemirror/lint';
 import type { EditorView } from '@codemirror/view';
 import { fetchCatalog } from './config/catalog';
 import { CancelledError, Engine, fetchVersions, type VersionInfo, type VersionsManifest } from './engine/client';
-import type { Issue } from './engine/normalize';
-import type { Files } from './engine/protocol';
+import type { Fix, Issue } from './engine/normalize';
+import type { Files, LintResult } from './engine/protocol';
 import { CONFIG_FILE } from './engine/runner';
+import { applyFix } from './fixes';
 import { DEFAULT_CODE, DEFAULT_CONFIG, SAMPLES } from './samples';
 import { decodeSnapshot, encodeSnapshot, type Snapshot } from './share';
 import { createConfigEditor, createGoEditor, setConfigCatalog, setText } from './ui/editors';
@@ -21,6 +22,7 @@ const ui = {
   version: $<HTMLSelectElement>('version'),
   run: $<HTMLButtonElement>('run'),
   format: $<HTMLButtonElement>('format'),
+  fix: $<HTMLButtonElement>('fix'),
   cancel: $<HTMLButtonElement>('cancel'),
   share: $<HTMLButtonElement>('share'),
   progress: $<HTMLProgressElement>('progress'),
@@ -47,6 +49,7 @@ function setState(s: State): void {
   document.body.dataset.state = s;
   ui.run.disabled = s !== 'ready';
   ui.format.disabled = s !== 'ready';
+  ui.fix.disabled = s !== 'ready';
   ui.cancel.hidden = s !== 'running';
   ui.version.disabled = s === 'running' || !manifest || manifest.versions.length < 2;
 }
@@ -133,6 +136,7 @@ function showDiagnostics(issues: Issue[]): void {
       severity: issue.linter === 'typecheck' ? 'error' : 'warning',
       source: issue.linter,
       message: issue.message,
+      actions: (issue.fixes ?? []).map((fix) => ({ name: fixLabel(fix), apply: () => void quickFix(issue, fix) })),
     });
     byFile.set(issue.file, list);
   }
@@ -140,6 +144,53 @@ function showDiagnostics(issues: Issue[]): void {
 }
 
 // ---- running ----
+
+/** The code files as they were when the shown results were produced (null if there are no results). */
+let lintedContents: Files | null = null;
+
+function codeFiles(files: Files): Files {
+  const { [CONFIG_FILE]: _config, ...code } = files;
+  return code;
+}
+
+function fixLabel(fix: Fix): string {
+  return fix.message ? `修正: ${fix.message}` : '修正';
+}
+
+/** Shows a lint report. Returns false if golangci-lint failed before linting. */
+function showResult(result: LintResult, linted: Files): boolean {
+  ui.log.textContent = result.log;
+  ui.logDetails.hidden = !result.log;
+  if (result.issues) {
+    lintedContents = linted;
+    renderIssues(ui.results, result.issues, select, (issue, fix) => void quickFix(issue, fix), fixLabel);
+    showDiagnostics(result.issues);
+    ui.summary.textContent = result.issues.length ? `${result.issues.length} 件` : '';
+    document.body.dataset.lastRun = 'ok';
+    return true;
+  }
+  // No report: golangci-lint failed before linting (e.g. an invalid configuration).
+  lintedContents = null;
+  renderMessage(ui.results, `golangci-lint が失敗しました（終了コード ${result.exitCode}）。\n${result.log}`, 'error');
+  ui.logDetails.hidden = true;
+  ui.summary.textContent = '';
+  document.body.dataset.lastRun = 'failed';
+  return false;
+}
+
+function handleRunError(err: unknown): void {
+  if (err instanceof CancelledError) {
+    status('キャンセルしました');
+    renderMessage(ui.results, 'キャンセルしました。');
+    document.body.dataset.lastRun = 'cancelled';
+    // engine.cancel() restarts the worker and sets the state back to ready.
+  } else {
+    renderMessage(ui.results, String((err as Error).message ?? err), 'error');
+    status('エラー');
+    document.body.dataset.lastRun = 'error';
+    setState('ready');
+  }
+}
 
 function collectFiles(): Files {
   const files = tabs.contents();
@@ -149,48 +200,71 @@ function collectFiles(): Files {
   return files;
 }
 
-async function run(): Promise<void> {
+async function run(prefix = ''): Promise<void> {
   if (state !== 'ready' || !engine) return;
   setState('running');
   tabs.setDiagnostics(new Map());
   const started = performance.now();
-  const timer = setInterval(() => status(`検査中… ${((performance.now() - started) / 1000).toFixed(1)} 秒`), 100);
-  status('検査中…');
+  const timer = setInterval(() => status(`${prefix}検査中… ${((performance.now() - started) / 1000).toFixed(1)} 秒`), 100);
+  status(`${prefix}検査中…`);
   try {
-    const result = await engine.lint(collectFiles());
+    const files = collectFiles();
+    const result = await engine.lint(files);
     const seconds = ((performance.now() - started) / 1000).toFixed(2);
-    ui.log.textContent = result.log;
-    ui.logDetails.hidden = !result.log;
-    if (result.issues) {
-      renderIssues(ui.results, result.issues, select);
-      showDiagnostics(result.issues);
-      ui.summary.textContent = result.issues.length ? `${result.issues.length} 件` : '';
-      status(`完了（${seconds} 秒）`);
-      document.body.dataset.lastRun = 'ok';
-    } else {
-      // No report: golangci-lint failed before linting (e.g. an invalid configuration).
-      renderMessage(ui.results, `golangci-lint が失敗しました（終了コード ${result.exitCode}）。\n${result.log}`, 'error');
-      ui.logDetails.hidden = true;
-      ui.summary.textContent = '';
-      status(`失敗（${seconds} 秒）`);
-      document.body.dataset.lastRun = 'failed';
-    }
+    status(showResult(result, codeFiles(files)) ? `${prefix}完了（${seconds} 秒）` : `${prefix}失敗（${seconds} 秒）`);
     setState('ready');
   } catch (err) {
-    if (err instanceof CancelledError) {
-      status('キャンセルしました');
-      renderMessage(ui.results, 'キャンセルしました。');
-      document.body.dataset.lastRun = 'cancelled';
-      // engine.cancel() restarts the worker and sets the state back to ready.
-    } else {
-      renderMessage(ui.results, String((err as Error).message ?? err), 'error');
-      status('エラー');
-      document.body.dataset.lastRun = 'error';
-      setState('ready');
-    }
+    handleRunError(err);
   } finally {
     clearInterval(timer);
   }
+}
+
+/** Applies all fixes golangci-lint can make (`run --fix`) and shows the remaining issues. */
+async function fixAll(): Promise<void> {
+  if (state !== 'ready' || !engine) return;
+  setState('running');
+  tabs.setDiagnostics(new Map());
+  status('自動修正中…');
+  try {
+    const result = await engine.fix(collectFiles());
+    const changed = Object.entries(result.files)
+      .filter(([name, content]) => tabs.replaceContent(name, content))
+      .map(([name]) => name);
+    if (showResult(result, tabs.contents())) {
+      const remaining = result.issues!.length;
+      status(
+        changed.length
+          ? `自動修正しました（${changed.join(', ')}）。残りの指摘: ${remaining} 件`
+          : `自動修正できる指摘はありませんでした（指摘: ${remaining} 件）`,
+      );
+    } else {
+      status('失敗しました');
+    }
+    setState('ready');
+  } catch (err) {
+    handleRunError(err);
+  }
+}
+
+/** Applies one suggested fix, then lints again. */
+async function quickFix(issue: Issue, fix: Fix): Promise<void> {
+  if (state !== 'ready') return;
+  const current = tabs.content(issue.file);
+  // The fix's offsets refer to the linted content.
+  if (current === null || lintedContents?.[issue.file] !== current) {
+    status('Run のあとでコードが変更されたため、この修正は適用できません。もう一度 Run してください');
+    return;
+  }
+  let next: string;
+  try {
+    next = applyFix(current, fix);
+  } catch (err) {
+    status(`修正を適用できませんでした: ${(err as Error).message}`);
+    return;
+  }
+  tabs.replaceContent(issue.file, next);
+  await run(`${issue.linter} の修正を適用しました。再`);
 }
 
 /** Formats all Go files with goimports (which also adds missing imports). */
@@ -341,6 +415,7 @@ async function main(): Promise<void> {
 
 ui.run.addEventListener('click', () => void run());
 ui.format.addEventListener('click', () => void format());
+ui.fix.addEventListener('click', () => void fixAll());
 ui.cancel.addEventListener('click', () => void cancel());
 ui.share.addEventListener('click', () => void share());
 ui.resetConfig.addEventListener('click', () => setText(configEditor, DEFAULT_CONFIG));
