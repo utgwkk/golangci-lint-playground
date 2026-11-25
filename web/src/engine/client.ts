@@ -13,7 +13,20 @@ export interface VersionInfo {
   goVersion: string;
   /** Directory of the version's assets, relative to the site root (e.g. "v/v2.5.0/"). */
   path: string;
+  /** Every file in the directory. */
   files: Record<string, AssetInfo>;
+}
+
+/**
+ * URL of a file of a version, with its content hash as "?v=...". Files of a
+ * version can be rebuilt under the same path, so the hash makes the URL change
+ * with the content: browser and service worker caches never serve a stale file.
+ */
+export function assetUrl(base: URL, info: VersionInfo, name: string): URL {
+  const url = new URL(name, new URL(info.path, base));
+  const sha = info.files[name]?.sha256;
+  if (sha) url.searchParams.set('v', sha.slice(0, 16));
+  return url;
 }
 
 export interface VersionsManifest {
@@ -46,8 +59,8 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function download(url: URL, onChunk: (n: number) => void): Promise<Uint8Array> {
-  const res = await fetch(url);
+async function download(url: URL, onChunk: (n: number) => void, init?: RequestInit): Promise<Uint8Array> {
+  const res = await fetch(url, init);
   if (!res.ok || !res.body) throw new Error(`${url.pathname}: HTTP ${res.status}`);
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -82,18 +95,31 @@ export class Engine {
 
   /** Downloads, verifies and compiles the assets, then starts the worker. */
   async load(onProgress: (p: Progress) => void): Promise<void> {
-    const dir = new URL(this.info.path, this.base);
     const total = ASSETS.reduce((s, name) => s + (this.info.files[name]?.size ?? 0), 0);
     let loaded = 0;
     onProgress({ loaded, total });
     const [wasm, std, cache] = await Promise.all(
       ASSETS.map(async (name) => {
-        const bytes = await download(new URL(name, dir), (n) => {
-          loaded += n;
-          onProgress({ loaded, total });
-        });
+        const url = assetUrl(this.base, this.info, name);
         const expected = this.info.files[name]?.sha256;
-        if (expected && (await sha256Hex(bytes)) !== expected) throw new Error(`${name}: checksum mismatch`);
+        let counted = 0;
+        const fetchOnce = async (init?: RequestInit) => {
+          loaded -= counted; // a retry starts over
+          counted = 0;
+          return download(url, (n) => {
+            counted += n;
+            loaded += n;
+            onProgress({ loaded, total });
+          }, init);
+        };
+        let bytes = await fetchOnce();
+        if (expected && (await sha256Hex(bytes)) !== expected) {
+          // Stale copy somewhere (e.g. a CDN still serving the previous deploy): retry once, bypassing caches.
+          bytes = await fetchOnce({ cache: 'reload' });
+          if ((await sha256Hex(bytes)) !== expected) {
+            throw new Error(`${name}: checksum mismatch（デプロイ直後の可能性があります。少し時間をおいて再読み込みしてください）`);
+          }
+        }
         return bytes;
       }),
     );
@@ -102,7 +128,7 @@ export class Engine {
     this.init = {
       type: 'init',
       module,
-      wasmExecUrl: new URL('wasm_exec.js', dir).href,
+      wasmExecUrl: assetUrl(this.base, this.info, 'wasm_exec.js').href,
       std,
       cache,
       goVersion: this.info.goVersion,

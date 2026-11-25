@@ -293,7 +293,7 @@ function isChrome(): boolean {
 async function loadCatalog(info: VersionInfo): Promise<void> {
   ui.openTools.disabled = true;
   try {
-    const catalog = await fetchCatalog(new URL(info.path, base));
+    const catalog = await fetchCatalog(base, info);
     setConfigCatalog(configEditor, catalog);
     toolsPanel.setCatalog(catalog);
     ui.openTools.disabled = false;

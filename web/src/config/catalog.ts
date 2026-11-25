@@ -1,6 +1,7 @@
 // Per-version metadata built by wasm/build.sh: the configuration schema and
 // the lists of linters and formatters.
 
+import { assetUrl, type VersionInfo } from '../engine/client';
 import type { Schema } from './schema';
 
 export interface ToolInfo {
@@ -21,9 +22,9 @@ export interface Catalog {
   formatters: ToolInfo[];
 }
 
-export async function fetchCatalog(versionDir: URL): Promise<Catalog> {
+export async function fetchCatalog(base: URL, info: VersionInfo): Promise<Catalog> {
   const get = async <T>(name: string): Promise<T> => {
-    const res = await fetch(new URL(name, versionDir));
+    const res = await fetch(assetUrl(base, info, name));
     if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
     return res.json() as Promise<T>;
   };

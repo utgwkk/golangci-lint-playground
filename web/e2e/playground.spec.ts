@@ -319,3 +319,47 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.close();
   });
 }
+
+// Assets of a version can be rebuilt and redeployed under the same path (e.g.
+// the seeded cache contains timestamps). A normal reload must pick them up.
+test('picks up redeployed assets without a forced reload', async ({ page }) => {
+  const { readFile, writeFile } = await import('node:fs/promises');
+  const { createHash } = await import('node:crypto');
+  const dist = new URL('../dist/', import.meta.url);
+  const manifestPath = new URL('versions.json', dist);
+  const manifestText = await readFile(manifestPath, 'utf8');
+  const manifest = JSON.parse(manifestText);
+  const info = manifest.versions[0];
+  const assetPath = new URL(`${info.path}cache.bundle.bin`, dist);
+  const original = await readFile(assetPath);
+
+  await open(page);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await expect(page.locator('body')).toHaveAttribute('data-state', 'ready', { timeout: 120_000 });
+
+  // "Redeploy": same content, different bytes (the gzip header's mtime) and checksum.
+  const rebuilt = Buffer.from(original);
+  rebuilt.writeUInt32LE((rebuilt.readUInt32LE(4) + 1) >>> 0, 4);
+  info.files['cache.bundle.bin'].sha256 = createHash('sha256').update(rebuilt).digest('hex');
+  try {
+    await writeFile(assetPath, rebuilt);
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+    await page.reload();
+    await expect(page.locator('body')).toHaveAttribute('data-state', 'ready', { timeout: 120_000 });
+    expect(await run(page)).toContain('errcheck');
+    // Only the new copy stays in the service worker's cache.
+    const hash = info.files['cache.bundle.bin'].sha256.slice(0, 16);
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const cache = await caches.open('golangci-lint-assets-v1');
+          return (await cache.keys()).map((r) => new URL(r.url)).filter((u) => u.pathname.endsWith('/cache.bundle.bin')).map((u) => u.search);
+        }),
+      )
+      .toEqual([`?v=${hash}`]);
+  } finally {
+    await writeFile(assetPath, original);
+    await writeFile(manifestPath, manifestText);
+  }
+});
