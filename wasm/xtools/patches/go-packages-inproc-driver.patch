@@ -1,0 +1,23 @@
+--- a/go/packages/packages.go
++++ b/go/packages/packages.go
+@@ -287,12 +287,20 @@
+ 	return response.Packages, err
+ }
+ 
++// inprocDriver, if set, replaces the go list driver.
++// It is set on js/wasm, where `go list` cannot be executed (see inproc_js.go).
++var inprocDriver func(cfg *Config, patterns ...string) (*DriverResponse, error)
++
+ // defaultDriver is a driver that implements go/packages' fallback behavior.
+ // It will try to request to an external driver, if one exists. If there's
+ // no external driver, or the driver returns a response with NotHandled set,
+ // defaultDriver will fall back to the go list driver.
+ // The boolean result indicates that an external driver handled the request.
+ func defaultDriver(cfg *Config, patterns ...string) (*DriverResponse, bool, error) {
++	if inprocDriver != nil {
++		resp, err := inprocDriver(cfg, patterns...)
++		return resp, true, err
++	}
+ 	const (
+ 		// windowsArgMax specifies the maximum command line length for
+ 		// the Windows' CreateProcess function.

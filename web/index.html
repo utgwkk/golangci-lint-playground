@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Run golangci-lint on Go code in your browser.">
+  <title>golangci-lint playground</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230b6bcb'/%3E%3Cpath d='M4 8.5l2.5 2.5L12 5' stroke='white' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="toolbar">
+    <h1>golangci-lint playground</h1>
+    <label class="version">
+      <span class="visually-hidden">golangci-lint version</span>
+      <select id="version" disabled></select>
+    </label>
+    <button id="run" class="primary" disabled title="Ctrl+Enter / ⌘+Enter">Run</button>
+    <button id="cancel" hidden>Cancel</button>
+    <button id="share" title="Copy a link to this code and configuration">Share</button>
+    <div id="status" class="status" role="status" aria-live="polite">
+      <progress id="progress" hidden></progress>
+      <span id="status-text">読み込み中…</span>
+    </div>
+  </header>
+  <div id="notice" class="notice" hidden></div>
+  <main class="layout">
+    <section class="pane code-pane" aria-label="Go code">
+      <div class="pane-header">
+        <span>Go</span>
+        <span class="hint">複数ファイルは <code>-- name.go --</code> 区切り（txtar）</span>
+      </div>
+      <div id="code" class="editor"></div>
+    </section>
+    <section class="pane config-pane" aria-label=".golangci.yml">
+      <div class="pane-header">
+        <span>.golangci.yml</span>
+        <button id="reset-config" class="link">デフォルトに戻す</button>
+      </div>
+      <div id="config" class="editor"></div>
+    </section>
+    <section class="pane results-pane" aria-label="Results">
+      <div class="pane-header"><span>結果</span><span id="summary" class="hint"></span></div>
+      <div id="results" class="results"><p class="placeholder">Run を押すと golangci-lint で検査します。</p></div>
+      <details id="log-details" class="log" hidden>
+        <summary>golangci-lint のログ</summary>
+        <pre id="log"></pre>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

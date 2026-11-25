@@ -1,0 +1,23 @@
+goimports adds and sorts imports; gofumpt and golines are stricter than gofmt.
+-- main.go --
+package main
+import (
+	"os"
+	"fmt"
+)
+func main() {
+	var s = strings.Repeat("x", 3)
+	fmt.Println(s, len(os.Args), "a very long line that goes on and on and on and on and on and on and on and on and on")
+}
+-- .golangci.yml --
+version: "2"
+linters:
+  default: none
+formatters:
+  enable:
+    - goimports
+    - gofumpt
+    - golines
+  settings:
+    golines:
+      max-len: 80
