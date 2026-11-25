@@ -15,6 +15,9 @@
   --warning-soft: #fff4dd;
   --ok: #1f7a3a;
   --active-line: #f3f6fa;
+  /* Translucent: CodeMirror draws the selection behind the line, so an opaque
+     active-line background would hide the selection on the cursor's line. */
+  --editor-active-line: rgb(15 60 130 / 0.05);
   --selection: #cfe3fa;
   --syn-keyword: #a626a4;
   --syn-string: #2f7d32;
@@ -46,6 +49,7 @@
     --warning-soft: #3a2e17;
     --ok: #7fcf94;
     --active-line: #22252a;
+    --editor-active-line: rgb(255 255 255 / 0.04);
     --selection: #284a6e;
     --syn-keyword: #d08ad6;
     --syn-string: #8fcf8a;
@@ -75,6 +79,7 @@
   --warning-soft: #3a2e17;
   --ok: #7fcf94;
   --active-line: #22252a;
+  --editor-active-line: rgb(255 255 255 / 0.04);
   --selection: #284a6e;
   --syn-keyword: #d08ad6;
   --syn-string: #8fcf8a;
