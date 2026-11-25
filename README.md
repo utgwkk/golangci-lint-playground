@@ -9,6 +9,7 @@
 - golangci-lint v2.15.0（Go 1.27.4 でビルド）による検査。結果はネイティブ版と同じです（`testdata/parity/` で確認しています）
 - `.golangci.yml` の自由記述。書いた内容は書き換えずにそのまま使われます
 - `.golangci.yml` の補完・説明・警告（golangci-lint の JSON Schema に基づく）と、リンター・フォーマッタを一覧から選べるダイアログ（YAML の該当箇所だけを書き換えます）
+- `Format` ボタン（Shift+Alt+F）: goimports で整形し、足りない import を追加します
 - 複数ファイル（タブで切り替え）、同じモジュール内のパッケージ
 - サンプル集（`web/examples/`）
 - URL での共有（コードと設定は URL の `#` 以降に圧縮して入り、サーバーには送られません）

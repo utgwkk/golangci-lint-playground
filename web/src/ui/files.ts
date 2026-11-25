@@ -6,6 +6,7 @@ import { setDiagnostics, type Diagnostic } from '@codemirror/lint';
 import { EditorSelection, type EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { CONFIG_FILE, isValidFileName } from '../engine/runner';
+import { diff } from '../textdiff';
 import { formatTxtar, parseTxtar } from '../txtar';
 
 interface FileEntry {
@@ -85,6 +86,27 @@ export class FileTabs {
       this.active = index;
       this.opts.view.setState(this.files[index].state);
       this.render();
+    }
+    return true;
+  }
+
+  /**
+   * Replaces the content of a file with a minimal edit (an undoable change; the
+   * cursor and lint markers outside the changed part stay where they are).
+   * Returns whether the file changed.
+   */
+  replaceContent(name: string, content: string): boolean {
+    this.sync();
+    const index = this.files.findIndex((f) => f.name === name);
+    if (index < 0) return false;
+    const changes = diff(this.files[index].state.doc.toString(), content);
+    if (!changes.length) return false;
+    if (index === this.active) {
+      this.opts.view.dispatch({ changes, userEvent: 'format' });
+      this.files[index].state = this.opts.view.state;
+    } else {
+      this.files[index].state = this.files[index].state.update({ changes, userEvent: 'format' }).state;
+      this.opts.onChange();
     }
     return true;
   }

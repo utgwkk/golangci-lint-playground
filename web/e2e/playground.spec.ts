@@ -240,3 +240,57 @@ test('opens samples', async ({ page }) => {
   await expect(page.locator('.tab-name')).toHaveText(['main.go']);
   expect(await run(page)).toContain('modernize');
 });
+
+async function formatCode(page: Page, how: 'button' | 'shortcut' = 'button'): Promise<string> {
+  await page.evaluate(() => delete document.body.dataset.lastFormat);
+  if (how === 'button') {
+    await page.click('#format');
+  } else {
+    await page.locator('#code .cm-content').click();
+    await page.keyboard.press('Shift+Alt+F');
+  }
+  await expect(page.locator('body')).toHaveAttribute('data-last-format', /.+/, { timeout: 120_000 });
+  return (await page.locator('body').getAttribute('data-last-format'))!;
+}
+
+async function codeText(page: Page): Promise<string> {
+  return (await page.locator('#code .cm-line').allTextContents()).join('\n');
+}
+
+test('formats with goimports and adds missing imports in every file', async ({ page }) => {
+  await open(page);
+  const original = 'package main\nimport "os"\nfunc main() {\n  fmt.Println(strings.ToUpper(os.Args[0]), util.F())\n}\n';
+  await setEditor(page, 'code', original);
+  await addFile(page, 'util/util.go');
+  await setEditor(page, 'code', 'package util\n\nfunc F() string { return strconv.Itoa(1) }\n');
+  await page.locator('.tab-name', { hasText: /^main\.go$/ }).click();
+
+  expect(await formatCode(page)).toBe('ok');
+  expect(await codeText(page)).toBe(
+    'package main\n\nimport (\n\t"fmt"\n\t"os"\n\t"strings"\n)\n\nfunc main() {\n\tfmt.Println(strings.ToUpper(os.Args[0]), util.F())\n}\n',
+  );
+  await expect(page.locator('#status-text')).toContainText('main.go, util/util.go');
+
+  // The other tab was formatted too.
+  await page.locator('.tab-name', { hasText: 'util/util.go' }).click();
+  await expect(page.locator('#code .cm-content')).toContainText('import "strconv"');
+
+  // Formatting is an undoable edit.
+  await page.locator('.tab-name', { hasText: /^main\.go$/ }).click();
+  await page.locator('#code .cm-content').click();
+  await page.keyboard.press('ControlOrMeta+Z');
+  expect(await codeText(page)).toBe(original);
+});
+
+test('formats with the keyboard shortcut and reports files it cannot parse', async ({ page }) => {
+  await open(page);
+  await setEditor(page, 'code', 'package main\nfunc main() { fmt.Println(1) }\n');
+  expect(await formatCode(page, 'shortcut')).toBe('ok');
+  await expect(page.locator('#code .cm-content')).toContainText('import "fmt"');
+
+  const broken = 'package main\n\nfunc broken( {\n';
+  await setEditor(page, 'code', broken);
+  expect(await formatCode(page)).toBe('failed');
+  await expect(page.locator('#status-text')).toContainText('構文エラーのため整形できなかったファイルがあります: main.go');
+  expect(await codeText(page)).toBe(broken);
+});

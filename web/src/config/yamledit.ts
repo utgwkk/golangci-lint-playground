@@ -4,11 +4,9 @@
 
 import { isMap, isPair, isScalar, isSeq, parseDocument, type Document, type Node, type Pair, type YAMLMap, type YAMLSeq } from 'yaml';
 
-export interface TextEdit {
-  from: number;
-  to: number;
-  insert: string;
-}
+import type { TextEdit } from '../textdiff';
+
+export type { TextEdit };
 
 type Key = string;
 

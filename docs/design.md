@@ -133,7 +133,8 @@ golangci-lint のネイティブ版（v2.5.0・v2.15.0）と、js/wasm 版の Po
   - Monaco より軽量で、`@codemirror/lint` で診断表示、`@codemirror/lang-go` / `@codemirror/lang-yaml` が使える
   - UI フレームワークは小さく保つ（Preact もしくは素の TS）
 - **画面構成**
-  - ヘッダ: `Run`（Ctrl/Cmd+Enter）、`Cancel`（実行中のみ）、`Format`、`Fix`、`Share`、バージョン選択、サンプル選択
+  - ヘッダ: `Run`（Ctrl/Cmd+Enter）、`Format`（Shift+Alt+F）、`Cancel`（実行中のみ）、`Fix`（Phase 3）、`Share`、バージョン選択、サンプル選択
+    - **`Format`**: すべての Go ファイルを goimports で整形し、足りない import を追加・使っていない import を削除する（`golangci-lint fmt --no-config -E goimports`）。ユーザーの `.golangci.yml` は読まない。設定にほかのフォーマッタ（gofumpt など）があっても混ぜず、結果を goimports だけで決めるため。足りない import は x/tools のパッチ（[4.3](#43-ビルドパイプライン)）により `$GOROOT/src` から探す。変わったファイルだけを最小限の差分で書き換えるので、元に戻す（Undo）ができる。構文エラーで整形できなかったファイルは、そのファイル名を表示する
   - 左: Go コードエディタ（ファイルタブ。`+` で `go.mod` や追加ファイルを作成、ダブルクリックで名前を変更、`×` で削除。タブには指摘の件数を出す）。ファイルごとに CodeMirror の `EditorState` を持つので、元に戻す履歴やマーカーはファイルごとに保たれる（`ui/files.ts`）
   - 右上: 設定パネル（[1.4](#14-要件設定ファイル-yaml-の自由記述) の要件に対応）
     - **YAML エディタ（正本）**: `.golangci.yml` を自由記述する。`@codemirror/lang-yaml` によるハイライトに加えて、バージョンごとの JSON Schema（`schema.json`）を使った支援をする（`web/src/config/`）
@@ -176,7 +177,8 @@ golangci-lint のネイティブ版（v2.5.0・v2.15.0）と、js/wasm 版の Po
 | --- | --- | --- |
 | UI → Worker | `init` | `{ module, wasmExecUrl, std, cache, goVersion }`。ダウンロード・チェックサム検証・WASM のコンパイルはメインスレッドで済ませ、コンパイル済みのモジュールとバンドルを渡す。Worker はバンドルを MemFS に展開する |
 | UI → Worker | `lint` | `{ id, files: { name: content } }`。`.golangci.yml` も `files` に含める。検査を実行する |
-| UI → Worker | `fix` / `fmt` | （Phase 3）`lint` と同じ入力。`--fix` 付きの実行 / `golangci-lint fmt` を行い、変更後のファイルを返す |
+| UI → Worker | `format` | `{ id, files }`。goimports で整形し（`FORMAT_ARGS`）、整形後のファイルを `formatted`（`{ id, files, log, exitCode, ms }`）で返す |
+| UI → Worker | `fix` | （Phase 3）`lint` と同じ入力。`--fix` 付きで実行し、変更後のファイルを返す |
 | UI → Worker | `migrate` | （Phase 3）`{ id, config }`。`golangci-lint migrate` で v1 設定を v2 に変換する |
 | Worker → UI | `ready` | 初期化完了 |
 | Worker → UI | `result` | `{ id, issues, files?, log, exitCode, ms }` |
@@ -368,7 +370,7 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 | MemFS の互換テスト | 同じ操作を MemFS と `node:fs`（一時ディレクトリ）の両方に実行し、結果とエラーコード（`ENOENT`・`EEXIST`・`EISDIR`・`ENOTDIR`・`ENOTEMPTY`・`EBADF` など）が一致することを確認する | `npm test`（`web/test/gofs.test.ts`） |
 | 単体テスト | 結果の正規化（`typecheck` の位置補正、`SuggestedFixes` のデコード、ログの整理）、txtar、共有 URL の往復、UTF-8 の列位置の変換、非対応設定の検出、スキーマのたどり方と検証（テスト用の小さなスキーマで）、カーソル位置の YAML パスの判定、YAML の部分書き換え（コメント・書式が保たれること）、リンターの有効/無効の判定と切り替え | `npm test` |
 | ネイティブとの一致テスト | `testdata/parity/*.txtar` と `web/examples/*.txtar`（サンプル集）を、同じバージョンのネイティブ版と WASM 版（Node.js 上）で検査し、Issue（自動修正の内容を含む）が完全に一致することを確認する。標準設定、全リンター＋全フォーマッタ、型エラー、複数パッケージ、フォーマッタ、設定の自由記述、nolint、gci の localmodule の 8 ケースと、サンプル 7 つ | `npm run parity` |
-| E2E | Playwright（Chromium）で、サンプルの検査とエディタのマーカー、Issue クリックでの移動、自由記述した設定（`output.*` を含む）の反映、非対応設定の警告、標準ライブラリ以外の import のエラー位置、ファイルタブ（追加・名前の変更・削除、別ファイルの指摘への移動）、不正な設定のエラー表示、共有 URL（複数ファイル、自動実行しないこと）、キャンセル、Service Worker のキャッシュ、リンター選択ダイアログ（YAML の部分書き換え）、スキーマによる補完・警告・ホバー、サンプル集の 12 シナリオ | `npm run e2e` |
+| E2E | Playwright（Chromium）で、サンプルの検査とエディタのマーカー、Issue クリックでの移動、自由記述した設定（`output.*` を含む）の反映、非対応設定の警告、標準ライブラリ以外の import のエラー位置、ファイルタブ（追加・名前の変更・削除、別ファイルの指摘への移動）、不正な設定のエラー表示、共有 URL（複数ファイル、自動実行しないこと）、キャンセル、Service Worker のキャッシュ、リンター選択ダイアログ（YAML の部分書き換え）、スキーマによる補完・警告・ホバー、サンプル集、goimports による整形（足りない import の追加、全タブ、元に戻す、ショートカット、構文エラーのファイル）の 14 シナリオ | `npm run e2e` |
 | CI | GitHub Actions で、型チェック・単体テスト・アセットのビルドを並列に、アセットができたらパリティテストと E2E を並列に実行する（[7 章](#7-デプロイ構成)） | `.github/workflows/ci.yml` |
 
 プロセス内ドライバ（Go）の単体テストはまだない。挙動はパリティテスト（複数パッケージ・型エラー）と E2E（標準ライブラリ以外の import）で確認している。
@@ -403,7 +405,7 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 ### Phase 3: 機能拡張
 
 - 複数バージョン対応、新バージョン追従の自動化
-- `Fix`（`--fix`）と `Format`（`fmt`）、Quick Fix（`SuggestedFixes` の適用）
+- `Fix`（`--fix`）、Quick Fix（`SuggestedFixes` の適用）。`Format`（goimports による整形と import の追加）は Phase 2 のあとに先行して実装した
 - v1 設定から v2 への移行支援（`golangci-lint migrate` をブラウザ内で実行）
 - GitHub Gist からの読み込み
 - 2 バージョンの結果を並べて比較

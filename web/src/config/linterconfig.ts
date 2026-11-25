@@ -5,7 +5,8 @@
 
 import { parseDocument } from 'yaml';
 import type { ToolInfo } from './catalog';
-import { addToSequence, removeFromSequence, setScalar, type TextEdit } from './yamledit';
+import { diff, type TextEdit } from '../textdiff';
+import { addToSequence, removeFromSequence, setScalar } from './yamledit';
 
 export type LinterDefault = 'standard' | 'all' | 'fast' | 'none';
 export const LINTER_DEFAULTS: LinterDefault[] = ['standard', 'all', 'fast', 'none'];
@@ -72,18 +73,4 @@ export function setFormatterEnabled(text: string, name: string, on: boolean): Te
 export function setLinterDefault(text: string, value: LinterDefault): TextEdit[] {
   // "standard" is golangci-lint's default; still written explicitly so that the choice is visible.
   return setScalar(text, ['linters', 'default'], value);
-}
-
-/** A single edit replacing the changed middle part of the text. */
-export function diff(a: string, b: string): TextEdit[] {
-  if (a === b) return [];
-  let start = 0;
-  while (start < a.length && start < b.length && a[start] === b[start]) start++;
-  let endA = a.length;
-  let endB = b.length;
-  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
-    endA--;
-    endB--;
-  }
-  return [{ from: start, to: endA, insert: b.slice(start, endB) }];
 }

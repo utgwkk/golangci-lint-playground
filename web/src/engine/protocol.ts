@@ -12,7 +12,8 @@ export type ToWorker =
       cache: Uint8Array | null;
       goVersion: string;
     }
-  | { type: 'lint'; id: number; files: Files };
+  | { type: 'lint'; id: number; files: Files }
+  | { type: 'format'; id: number; files: Files };
 
 export interface LintResult {
   /** null when golangci-lint did not produce a report (e.g. invalid configuration). */
@@ -23,7 +24,17 @@ export interface LintResult {
   ms: number;
 }
 
+export interface FormatResult {
+  /** The files after formatting (all files that were sent). */
+  files: Files;
+  /** stdout + stderr of golangci-lint, without browser-specific noise. */
+  log: string;
+  exitCode: number;
+  ms: number;
+}
+
 export type FromWorker =
   | { type: 'ready'; files: number }
   | ({ type: 'result'; id: number } & LintResult)
+  | ({ type: 'formatted'; id: number } & FormatResult)
   | { type: 'error'; id?: number; message: string };
