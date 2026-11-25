@@ -150,6 +150,7 @@ At first, WebAssembly in the browser was judged impractical, and the design desc
     - Partial rewriting of the YAML finds the position of the affected part from the syntax tree and replaces as little text as possible (`yamledit.ts`), because writing the whole document back with a YAML library would change quotes, indentation, blank lines and so on from how the user wrote them. Block and flow sequences, creating keys (including parents) and removing sequences that became empty (and their parents) are supported
     - Unsupported settings ([4.6](#46-features-that-do-not-work-in-the-browser)) and configuration errors are marked on their lines in the YAML editor
     - A "Reset to default" button
+  - The `Licenses` button at the end of the toolbar opens a dialog with the licenses and the source code ([section 12](#12-licenses))
   - Bottom right / bottom: the results panel
     - The list of issues (linter name, message, position). Clicking one jumps to the line
     - Squiggly markers in the editor, with the message on hover
@@ -234,13 +235,14 @@ For each golangci-lint version, the following assets are generated in `wasm/dist
 
 | Step | What | Output |
 | --- | --- | --- |
-| 1. Patch x/tools | Copy the `golang.org/x/tools` required by golangci-lint's `go.mod` from the module cache, apply the patches in `wasm/xtools/patches/` and add the files in `wasm/xtools/overlay/`. There are two patches: (a) a hook in `go/packages`' `defaultDriver` that calls the in-process driver (`inproc_js.go`, which also returns errors with import positions), and (b) a hook in `internal/imports`' `ProcessEnv.init` that returns values instead of running `go env` (`goenv_js.go`; it searches `$GOROOT/src` in GOPATH mode, so no `go` command is needed). The replacement is done with `replace` in a `-modfile` | — |
-| 2. WebAssembly build | `GOOS=js GOARCH=wasm go build -trimpath -ldflags='-s -w'` | `golangci-lint.wasm.bin` (gzip, about 15 MB) |
+| 1. Patch x/tools | Copy the `golang.org/x/tools` required by golangci-lint's `go.mod` from the module cache, apply the patches in `wasm/xtools/patches/` and add the files in `wasm/xtools/overlay/`. There are two patches: (a) a hook in `go/packages`' `defaultDriver` that calls the in-process driver (`inproc_js.go`, which also returns errors with import positions), and (b) a hook in `internal/imports`' `ProcessEnv.init` that returns values instead of running `go env` (`goenv_js.go`; it searches `$GOROOT/src` in GOPATH mode, so no `go` command is needed). x/tools is replaced with a `replace` directive in the `go.mod` of the source tree of step 2 | — |
+| 2. WebAssembly build | Vendor every module (with the patched x/tools) into a source tree, then build from it offline: `GOOS=js GOARCH=wasm GOFLAGS=-mod=vendor go build -trimpath -ldflags='-s -w'` | `golangci-lint.wasm.bin` (gzip, about 15 MB) |
 | 3. Standard library | From `go list -export -json std` (`CGO_ENABLED=0 GOOS=linux GOARCH=amd64`), pack the source, the export data (`__.PKGDEF` only) and a manifest of the packages into one file | `std.bundle.bin` (gzip, about 9.4 MB) |
 | 4. Cache | Run the WebAssembly build on Node with the same MemFS and paths as in the browser, linting a program that imports every public standard library package with the default configuration and with `--default=all` | `cache.bundle.bin` (gzip, about 0.3 MB) |
 | 5. Metadata | Run `help linters --json` / `help formatters --json` with the native build of the same version (built alongside step 2 and also used by the parity tests). Extract `jsonschema/golangci.jsonschema.json` from the module | `linters.json`, `formatters.json`, `schema.json`, `build.json` (the version and the Go version) |
-| 6. Manifest | Write the size and SHA-256 of each asset | `versions.json` |
-| 7. Verification | Run the test suite ([section 9](#9-testing-strategy)) | — |
+| 6. Source and licenses | Archive the vendored source tree that step 2 builds from (`golangci-lint-source.tar.gz`), and write the licenses of every module linked into the binary (`wasm/tools/mknotices`; see [section 12](#12-licenses)) | `golangci-lint-source.tar.gz`, `licenses.txt` |
+| 7. Manifest | Write the size and SHA-256 of each asset | `versions.json` |
+| 8. Verification | Run the test suite ([section 9](#9-testing-strategy)) | — |
 
 - **Pinning the Go toolchain**: built with the latest stable Go (currently go1.27.4), and the standard library in step 3 comes from the same Go ([1.5](#15-scope-decisions); the original plan was to use the same Go as golangci-lint's official release). It is set by the `toolchain` line of `wasm/go.mod` and enforced by `wasm/build.sh` through `GOTOOLCHAIN`. golangci-lint must be a version that supports that Go ([section 2](#2-verified-facts)). When Go or golangci-lint is upgraded, check that the parity tests match the native build (built with the same Go) and that the list of unsupported features in [4.6](#46-features-that-do-not-work-in-the-browser) has not changed
 - **Keeping the patches applying**: the x/tools patch only adds a few lines at the top of `defaultDriver`, so it is likely to keep applying as x/tools is updated. If it stops applying, the build fails, so CI notices
@@ -316,7 +318,9 @@ All linting happens in the user's own browser, so the sandbox, rate limiting and
 │   ├── xtools/
 │   │   ├── patches/               # Patches to golang.org/x/tools
 │   │   └── overlay/               # Files added to x/tools (inproc_js.go, goenv_js.go)
-│   └── tools/mkbundle/            # Generates the standard library bundle
+│   └── tools/
+│       ├── mkbundle/              # Generates the standard library bundle
+│       └── mknotices/             # Writes licenses.txt of the WebAssembly build (and checks the licenses)
 ├── web/                           # Web app (Vite + TypeScript + CodeMirror 6)
 │   ├── index.html
 │   ├── src/
@@ -327,7 +331,7 @@ All linting happens in the user's own browser, so the sandbox, rate limiting and
 │   │   ├── share.ts, txtar.ts, samples.ts
 │   │   └── sw.ts                  # Service worker
 │   ├── examples/                  # Samples (txtar)
-│   ├── scripts/                   # Cache generation, versions.json, parity tests (Node.js)
+│   ├── scripts/                   # Cache generation, versions.json, parity tests, licenses.txt of the web app (Node.js)
 │   ├── test/                      # Unit tests (Vitest)
 │   └── e2e/                       # E2E tests (Playwright)
 ├── scripts/
@@ -379,9 +383,9 @@ Without a server, little information is available.
 | Kind | What | How to run |
 | --- | --- | --- |
 | MemFS compatibility tests | Run the same operations on the MemFS and on `node:fs` (a temporary directory) and check that the results and error codes (`ENOENT`, `EEXIST`, `EISDIR`, `ENOTDIR`, `ENOTEMPTY`, `EBADF`, etc.) match | `npm test` (`web/test/gofs.test.ts`) |
-| Unit tests | Result normalization (position correction of `typecheck`, decoding of `SuggestedFixes`, log cleanup), txtar, share URL round trips, conversion of UTF-8 columns, detection of unsupported settings, schema navigation and validation (with a small test schema), the YAML path at the cursor, partial YAML edits (comments and formatting are kept), and checking and toggling whether linters are enabled | `npm test` |
+| Unit tests | Result normalization (position correction of `typecheck`, decoding of `SuggestedFixes`, log cleanup), txtar, share URL round trips, conversion of UTF-8 columns, detection of unsupported settings, schema navigation and validation (with a small test schema), the YAML path at the cursor, partial YAML edits (comments and formatting are kept), checking and toggling whether linters are enabled, and finding the npm package of a bundled module (for `licenses.txt`) | `npm test` |
 | Parity with the native build | Lint `testdata/parity/*.txtar` and `web/examples/*.txtar` (the samples) with the native and WebAssembly builds (on Node.js) of the same version, and check that the issues (including the suggested fixes) are exactly the same. Each case also runs with `--fix`, checking that the fixed files and remaining issues match too. 9 cases (default configuration, all linters and formatters, type errors, multiple packages, formatters, free-form configuration, nolint, gci's localmodule, auto-fixes including fixes after multibyte characters) and the 7 samples | `npm run parity` |
-| E2E | With Playwright (Chromium): linting a sample and the editor markers, jumping to an issue by clicking it, free-form configuration (including `output.*`), warnings about unsupported settings, the error position for imports outside the standard library, file tabs (add, rename, delete, jumping to an issue in another file), errors from an invalid configuration, share URLs (multiple files, not running automatically), cancellation, the service worker cache (assets rebuilt by a redeployment are fetched again without a forced reload), the linter dialog (partial YAML edits), completion, warnings and hover from the schema, the samples, formatting with goimports (adding missing imports, all tabs, undo, the shortcut, files with syntax errors), fixing everything with `Fix` (undo), and quick fixes (applied from the results list and from the editor popup, linting again, not applying after the code was edited). 20 scenarios, including 2 that check how the selection on the cursor line looks in the light and dark themes | `npm run e2e` |
+| E2E | With Playwright (Chromium): linting a sample and the editor markers, jumping to an issue by clicking it, free-form configuration (including `output.*`), warnings about unsupported settings, the error position for imports outside the standard library, file tabs (add, rename, delete, jumping to an issue in another file), errors from an invalid configuration, share URLs (multiple files, not running automatically), cancellation, the service worker cache (assets rebuilt by a redeployment are fetched again without a forced reload), the linter dialog (partial YAML edits), completion, warnings and hover from the schema, the samples, formatting with goimports (adding missing imports, all tabs, undo, the shortcut, files with syntax errors), fixing everything with `Fix` (undo), quick fixes (applied from the results list and from the editor popup, linting again, not applying after the code was edited), and the licenses dialog (the licenses and the source archive can be downloaded). 21 scenarios, including 2 that check how the selection on the cursor line looks in the light and dark themes | `npm run e2e` |
 | Documentation sync | `docs/design.md` and `docs/design.ja.md` have the same headings (levels and section numbers) | `node scripts/check-design-sync.mjs` |
 | CI | GitHub Actions runs the type check, the unit tests and the asset build in parallel, then the parity tests and E2E in parallel once the assets are ready ([section 7](#7-deployment)) | `.github/workflows/ci.yml` |
 
@@ -433,6 +437,25 @@ Third-party modules, supported browsers and the download size were settled in [1
 - **Heavy linter configurations**: `--default=all` takes about 7 seconds even with the cache (measured on Node). How to present the wait, and how much is acceptable
 - **Choosing the Go version**: whether to let users choose the Go version being analyzed (the `go` line of `go.mod`) separately from the golangci-lint version. The standard library bundle is needed per Go version, so for now it is fixed at "one Go per golangci-lint version"
 - **i18n**: the UI is in English only. Whether to offer other languages (e.g. Japanese)
+
+
+## 12. Licenses
+
+| Component | License | Where it is distributed |
+| --- | --- | --- |
+| This repository (web app, build scripts, tests) | MIT (`LICENSE`) | The repository; the web app on the site |
+| Patches to `golang.org/x/tools` (`wasm/xtools/patches/`) | BSD-3-Clause, the license of x/tools (`wasm/xtools/LICENSE`) | The repository; compiled into the WebAssembly build |
+| golangci-lint and its dependencies | GPL-3.0 for golangci-lint; each dependency under its own license | `v/<version>/` on the site (the WebAssembly build, `schema.json`) |
+| Go (runtime, standard library, `wasm_exec.js`) | BSD-3-Clause | `v/<version>/` on the site (`std.bundle.bin` contains its source) |
+| npm packages bundled into the web app | MIT, ISC (20 packages) | The web app on the site |
+
+- **The repository stays MIT**: it contains no golangci-lint code, only `go.mod` / `go.sum` that refer to it. The web app and golangci-lint are separate programs: the web app starts golangci-lint with command-line arguments and exchanges files with it through an in-memory file system, as a program runs a command on an operating system. So the web app is not a work based on golangci-lint, and the site distributes the two as an aggregate
+- **The site distributes a GPL-3.0 binary**: the WebAssembly build is a work based on golangci-lint, so the site meets the GPL-3.0's conditions for conveying object code
+  - **Corresponding source** (GPL-3.0 section 6(d)): `golangci-lint-source.tar.gz` is published next to the binary in `v/<version>/`. It contains `go.mod` / `go.sum`, every module vendored (including the patched `golang.org/x/tools`), a README with build instructions, and the playground's build script and patches. `wasm/build.sh` builds the binary from exactly this tree with `-mod=vendor` and no network access, so the archive cannot drift from the binary (rebuilding from the published archive gives a byte-identical `golangci-lint.wasm.bin`). The archive is reproducible (sorted entries, fixed timestamps), so its hash changes only with its content. This also makes the source of the MPL-2.0 modules available (MPL-2.0 section 3.2)
+  - **License texts and notices**: `v/<version>/licenses.txt`, generated by `wasm/tools/mknotices` from the vendored tree, lists every module linked into the binary with its license, followed by their LICENSE, NOTICE (Apache-2.0 section 4(d)) and PATENTS files and Go's license
+  - **Modification notice** (GPL-3.0 section 5(a)): golangci-lint itself is not modified, but `golang.org/x/tools` is patched. `licenses.txt` and the archive's README say so, with the date of the last change to the patches
+- **License review**: as of golangci-lint v2.15.0, the 206 modules linked into the binary are under MIT (133), Apache-2.0 (27), BSD-3-Clause (26), GPL-3.0 (7), MPL-2.0 (6), BSD-2-Clause (2), and dual or combined MIT with BSD-3-Clause (2), Apache-2.0 (2) or the Unlicense (1). All of them are compatible with the GPL-3.0. `mknotices` only accepts licenses it recognizes as compatible, and fails the build when a module has another license or none, so a golangci-lint upgrade cannot silently add one. The Vite plugin `web/scripts/licenses-plugin.ts` does the same for the npm packages bundled into the web app, and writes the web app's `licenses.txt` (the MIT license of the playground and the license files of the packages)
+- **In the UI**: the `Licenses` button in the toolbar opens a dialog that links to the repository, both `licenses.txt` files and the source archive of the selected version
 
 ## Appendix A: PoC results of the WebAssembly approach
 

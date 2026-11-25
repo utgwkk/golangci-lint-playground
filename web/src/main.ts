@@ -13,6 +13,7 @@ import { createConfigEditor, createGoEditor, setConfigCatalog, setText } from '.
 import { FileTabs } from './ui/files';
 import { fileRange } from './ui/positions';
 import { renderIssues, renderMessage } from './ui/results';
+import { LicensesDialog } from './ui/licenses';
 import { ToolsPanel } from './ui/toolspanel';
 
 type State = 'loading' | 'ready' | 'running' | 'error';
@@ -34,6 +35,7 @@ const ui = {
   log: $('log'),
   resetConfig: $<HTMLButtonElement>('reset-config'),
   openTools: $<HTMLButtonElement>('open-tools'),
+  openLicenses: $<HTMLButtonElement>('open-licenses'),
   sample: $<HTMLSelectElement>('sample'),
 };
 
@@ -424,6 +426,8 @@ ui.cancel.addEventListener('click', () => void cancel());
 ui.share.addEventListener('click', () => void share());
 ui.resetConfig.addEventListener('click', () => setText(configEditor, DEFAULT_CONFIG));
 ui.openTools.addEventListener('click', () => toolsPanel.open());
+const licensesDialog = new LicensesDialog($<HTMLDialogElement>('licenses-dialog'), base);
+ui.openLicenses.addEventListener('click', () => licensesDialog.open(manifest?.versions.find((v) => v.version === ui.version.value) ?? null));
 
 for (const sample of SAMPLES) ui.sample.append(new Option(sample.title, sample.id));
 ui.sample.addEventListener('change', () => {

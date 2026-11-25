@@ -1,5 +1,25 @@
 import { defineConfig } from 'vitest/config';
+import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
+import { licenses } from './scripts/licenses-plugin';
+
+const REPO_URL = 'https://github.com/utgwkk/golangci-lint-playground';
+
+// licenses.txt of the web app (golangci-lint's files have their own, see wasm/build.sh).
+const licenseFiles = licenses({
+  header: `golangci-lint playground: licenses
+==================================
+
+The golangci-lint playground (this web app) is licensed under the MIT license
+below. Its source code is at ${REPO_URL}.
+
+golangci-lint and the other files under v/<version>/ have their own licenses
+(golangci-lint is licensed under the GNU GPL version 3): see
+v/<version>/licenses.txt, and v/<version>/golangci-lint-source.tar.gz for the
+complete source code of the WebAssembly build.
+
+${readFileSync(new URL('../LICENSE', import.meta.url), 'utf8')}`,
+});
 
 // Content Security Policy for the production build (the dev server needs inline scripts and websockets).
 const CSP = [
@@ -25,10 +45,10 @@ function csp(): Plugin {
 export default defineConfig({
   // Relative base so that the site works under any path (e.g. GitHub Pages project sites).
   base: './',
-  plugins: [csp()],
+  plugins: [csp(), licenseFiles.main],
   // golangci-lint assets (wasm, bundles, versions.json) built by scripts/build-assets.sh.
   publicDir: '../wasm/dist',
-  worker: { format: 'es' },
+  worker: { format: 'es', plugins: () => [licenseFiles.worker()] },
   build: {
     target: 'es2022',
     // CodeMirror + yaml; small compared with the ~24 MB of golangci-lint assets.
