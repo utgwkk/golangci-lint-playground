@@ -22,7 +22,7 @@ const files = {
 for (const extra of [[], ['--default=all']]) {
   runner.writeWorkspace(memfs, files);
   const r = await runner.runGolangciLint(memfs, module, [...runner.LINT_ARGS.slice(0, -1), ...extra, './...']);
-  const issues = runner.parseIssues(r.stdout);
+  const issues = runner.parseIssues(r.result);
   console.log(`seed ${extra.join(' ') || '(standard)'}: exit=${r.exitCode} ${(r.ms / 1000).toFixed(1)}s issues=${issues?.length ?? 'n/a'}`);
   if (!issues) console.log(r.stderr.slice(0, 4000));
 }

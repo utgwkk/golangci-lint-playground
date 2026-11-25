@@ -9,6 +9,7 @@ export const PATHS = {
   cache: '/cache/golangci-lint',
   home: '/home/user',
   work: '/work',
+  result: '/tmp/result.json',
 };
 
 export const DEFAULT_GO_MOD = 'module playground\n\ngo 1.24\n';
@@ -29,9 +30,13 @@ export function installGlobals(memfs) {
   proc.ppid ??= -1;
 }
 
-// Runs golangci-lint with args in cwd. Returns { exitCode, stdout, stderr, ms }.
+// Runs golangci-lint with args in cwd.
+// Returns { exitCode, stdout, stderr, result, ms }, where result is the content
+// of PATHS.result (the JSON report) or null if golangci-lint did not write it.
 export async function runGolangciLint(memfs, module, args, { cwd = PATHS.work, env = {} } = {}) {
   const out = { 1: [], 2: [] };
+  memfs.mkdirAll('/tmp');
+  memfs.removeAll(PATHS.result);
   memfs.onOutput = (fd, bytes) => out[fd].push(bytes);
   memfs.cwd = cwd;
 
@@ -64,7 +69,9 @@ export async function runGolangciLint(memfs, module, args, { cwd = PATHS.work, e
   go._scheduledTimeouts?.clear();
 
   const text = (chunks) => new TextDecoder().decode(concat(chunks));
-  return { exitCode, stdout: text(out[1]), stderr: text(out[2]), ms };
+  let result = null;
+  try { result = new TextDecoder().decode(memfs.readFile(PATHS.result)); } catch {}
+  return { exitCode, stdout: text(out[1]), stderr: text(out[2]), result, ms };
 }
 
 function concat(chunks) {
@@ -92,16 +99,17 @@ export function writeWorkspace(memfs, files) {
 export const LINT_ARGS = [
   'run',
   '--allow-parallel-runners', // flock is unavailable on js/wasm
-  '--output.json.path', 'stdout',
+  // The JSON report goes to a file so that output settings in the user's
+  // .golangci.yml cannot interfere with it (flags take precedence).
+  '--output.json.path', PATHS.result,
   '--show-stats=false',
   './...',
 ];
 
-// Parses golangci-lint JSON output into a normalized issue list.
-export function parseIssues(stdout) {
-  const start = stdout.indexOf('{"Issues"');
-  if (start < 0) return null;
-  const report = JSON.parse(stdout.slice(start, stdout.lastIndexOf('}') + 1));
+// Parses the golangci-lint JSON report into a normalized issue list.
+export function parseIssues(json) {
+  if (!json) return null;
+  const report = JSON.parse(json);
   const issues = [];
   for (const it of report.Issues ?? []) {
     if (it.FromLinter === 'typecheck') {

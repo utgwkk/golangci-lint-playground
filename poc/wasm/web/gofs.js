@@ -158,8 +158,14 @@ export class MemFS {
   }
 
   removeAll(path) {
-    const { node, parent, name } = this._lookup(path, false);
-    if (node && parent) parent.children.delete(name);
+    let found;
+    try {
+      found = this._lookup(path, false);
+    } catch (e) {
+      if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return;
+      throw e;
+    }
+    if (found.node && found.parent) found.parent.children.delete(found.name);
   }
 
   // Yields [path, Uint8Array] for every regular file under dir.

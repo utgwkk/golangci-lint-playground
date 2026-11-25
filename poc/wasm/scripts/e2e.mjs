@@ -39,7 +39,9 @@ const missing = want.filter((l) => !second.includes(l));
 
 // A free-form .golangci.yml must be honored.
 const savedConfig = await page.inputValue('#config');
-await page.fill('#config', 'version: "2"\nlinters:\n  default: none\n  enable: [govet]\n');
+// It also sets output formats, which must not break result collection.
+await page.fill('#config', 'version: "2"\nlinters:\n  default: none\n  enable: [govet]\n' +
+  'output:\n  formats:\n    text:\n      path: stdout\n    json:\n      path: stderr\n');
 const configured = await runOnce('config (govet only)');
 await page.fill('#config', savedConfig);
 

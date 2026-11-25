@@ -123,6 +123,7 @@ worker.onmessage = (e) => {
       results.append(Object.assign(document.createElement('div'), { className: 'error', textContent: m.message }));
       status.textContent = 'エラー';
       runBtn.disabled = !document.body.dataset.ready;
+      document.body.dataset.lastRun = 'error';
       break;
   }
 };

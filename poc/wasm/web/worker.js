@@ -76,7 +76,7 @@ self.onmessage = (e) => {
       postMessage({
         type: 'result',
         id: msg.id,
-        issues: parseIssues(r.stdout),
+        issues: parseIssues(r.result),
         stdout: r.stdout,
         stderr: r.stderr,
         exitCode: r.exitCode,
