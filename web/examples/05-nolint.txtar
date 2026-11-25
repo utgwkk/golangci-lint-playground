@@ -1,12 +1,12 @@
-nolint ディレクティブ
-//nolint で指摘を抑え、nolintlint で //nolint の書き方を検査します。
+nolint directives
+Suppress issues with //nolint, and check how //nolint is written with nolintlint.
 -- main.go --
 package main
 
 import "os"
 
 func main() {
-	os.Remove("a") //nolint:errcheck // 失敗しても問題ない
+	os.Remove("a") //nolint:errcheck // failing is fine here
 	os.Remove("b") //nolint
 	os.Remove("c") //nolint:gosec
 }

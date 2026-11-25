@@ -1,5 +1,5 @@
-フォーマッタ
-goimports は import を整理し、gofumpt は gofmt より厳しく整形し、golines は長い行を指摘します。
+Formatters
+goimports organizes imports, gofumpt is a stricter gofmt, and golines reports long lines.
 -- main.go --
 package main
 import (

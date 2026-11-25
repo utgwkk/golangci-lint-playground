@@ -117,7 +117,7 @@ export class Engine {
           // Stale copy somewhere (e.g. a CDN still serving the previous deploy): retry once, bypassing caches.
           bytes = await fetchOnce({ cache: 'reload' });
           if ((await sha256Hex(bytes)) !== expected) {
-            throw new Error(`${name}: checksum mismatch（デプロイ直後の可能性があります。少し時間をおいて再読み込みしてください）`);
+            throw new Error(`${name}: checksum mismatch (the site may have just been deployed; reload in a moment)`);
           }
         }
         return bytes;

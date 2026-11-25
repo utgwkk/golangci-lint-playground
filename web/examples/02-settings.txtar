@@ -1,5 +1,5 @@
-リンターの設定と除外ルール
-linters.settings で個々のリンターを調整し、linters.exclusions で特定の指摘を除外します。
+Linter settings and exclusions
+Tune linters with linters.settings and exclude specific issues with linters.exclusions.
 -- main.go --
 package main
 
@@ -30,13 +30,13 @@ linters:
     - forcetypeassert
   settings:
     errcheck:
-      # 型アサーションの ok を確かめていないことも指摘する
+      # Also report type assertions whose ok value is not checked.
       check-type-assertions: true
     gocritic:
       enabled-tags: [diagnostic, style]
   exclusions:
     rules:
-      # main.go では if-else の連鎖を許す
+      # Allow if-else chains in main.go.
       - path: main\.go
         linters: [gocritic]
         text: ifElseChain

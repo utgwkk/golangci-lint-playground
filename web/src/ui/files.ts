@@ -24,10 +24,10 @@ export interface FileTabsOptions {
 
 /** Why a file name cannot be used, or null if it can. */
 export function fileNameError(name: string, existing: string[]): string | null {
-  if (!name) return 'ファイル名を入力してください';
-  if (name === CONFIG_FILE) return '.golangci.yml は右側の設定エディタで編集してください';
-  if (!isValidFileName(name)) return '使えない文字が含まれています（英数字と _ . - / のみ）';
-  if (existing.includes(name)) return '同じ名前のファイルがあります';
+  if (!name) return 'Enter a file name';
+  if (name === CONFIG_FILE) return 'Edit .golangci.yml in the configuration editor on the right';
+  if (!isValidFileName(name)) return 'Use only letters, digits and _ . - /';
+  if (existing.includes(name)) return 'A file with this name already exists';
   return null;
 }
 
@@ -157,7 +157,7 @@ export class FileTabs {
     if (this.files.length <= 1) return;
     const file = this.files[index];
     const hasContent = (index === this.active ? this.opts.view.state : file.state).doc.length > 0;
-    if (hasContent && !confirm(`${file.name} を削除しますか？`)) return;
+    if (hasContent && !confirm(`Delete ${file.name}?`)) return;
     this.sync();
     this.files.splice(index, 1);
     if (index < this.active) this.active--;
@@ -176,7 +176,7 @@ export class FileTabs {
     const input = document.createElement('input');
     input.className = 'tab-input';
     input.value = initial;
-    input.setAttribute('aria-label', index === null ? '新しいファイルの名前' : 'ファイル名');
+    input.setAttribute('aria-label', index === null ? 'New file name' : 'File name');
     input.spellcheck = false;
     let done = false;
     const finish = (commit: boolean) => {
@@ -232,7 +232,7 @@ export class FileTabs {
       button.className = 'tab-name';
       button.setAttribute('role', 'tab');
       button.setAttribute('aria-selected', String(i === this.active));
-      button.title = 'クリックで切り替え、ダブルクリックで名前を変更';
+      button.title = 'Click to open, double-click to rename';
       button.textContent = f.name;
       button.addEventListener('click', () => this.activate(f.name));
       button.addEventListener('dblclick', () => this.startEditing(i));
@@ -241,7 +241,7 @@ export class FileTabs {
         const badge = document.createElement('span');
         badge.className = 'tab-issues';
         badge.textContent = String(f.issues);
-        badge.title = `${f.issues} 件の指摘`;
+        badge.title = f.issues === 1 ? '1 issue' : `${f.issues} issues`;
         tab.append(badge);
       }
       if (this.files.length > 1) {
@@ -249,7 +249,7 @@ export class FileTabs {
         close.type = 'button';
         close.className = 'tab-close';
         close.textContent = '×';
-        close.setAttribute('aria-label', `${f.name} を削除`);
+        close.setAttribute('aria-label', `Delete ${f.name}`);
         close.addEventListener('click', () => this.remove(i));
         tab.append(close);
       }
@@ -262,8 +262,8 @@ export class FileTabs {
       add.type = 'button';
       add.className = 'tab-add';
       add.textContent = '+';
-      add.title = 'ファイルを追加（go.mod も追加できます）';
-      add.setAttribute('aria-label', 'ファイルを追加');
+      add.title = 'Add a file (go.mod too)';
+      add.setAttribute('aria-label', 'Add a file');
       add.addEventListener('click', () => this.startEditing(null));
       c.append(add);
     }

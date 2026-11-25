@@ -110,7 +110,7 @@ function load(code: string, config: string): void {
   tabs.load(code);
   setText(configEditor, config);
   baseline = { code: tabs.text(), config };
-  renderMessage(ui.results, 'Run を押すと golangci-lint で検査します。');
+  renderMessage(ui.results, 'Press Run to lint with golangci-lint.');
   ui.summary.textContent = '';
   ui.logDetails.hidden = true;
   saveDraft();
@@ -153,8 +153,12 @@ function codeFiles(files: Files): Files {
   return code;
 }
 
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
 function fixLabel(fix: Fix): string {
-  return fix.message ? `修正: ${fix.message}` : '修正';
+  return fix.message ? `Fix: ${fix.message}` : 'Fix';
 }
 
 /** Shows a lint report. Returns false if golangci-lint failed before linting. */
@@ -165,13 +169,13 @@ function showResult(result: LintResult, linted: Files): boolean {
     lintedContents = linted;
     renderIssues(ui.results, result.issues, select, (issue, fix) => void quickFix(issue, fix), fixLabel);
     showDiagnostics(result.issues);
-    ui.summary.textContent = result.issues.length ? `${result.issues.length} 件` : '';
+    ui.summary.textContent = result.issues.length ? plural(result.issues.length, 'issue') : '';
     document.body.dataset.lastRun = 'ok';
     return true;
   }
   // No report: golangci-lint failed before linting (e.g. an invalid configuration).
   lintedContents = null;
-  renderMessage(ui.results, `golangci-lint が失敗しました（終了コード ${result.exitCode}）。\n${result.log}`, 'error');
+  renderMessage(ui.results, `golangci-lint failed (exit code ${result.exitCode}).\n${result.log}`, 'error');
   ui.logDetails.hidden = true;
   ui.summary.textContent = '';
   document.body.dataset.lastRun = 'failed';
@@ -180,13 +184,13 @@ function showResult(result: LintResult, linted: Files): boolean {
 
 function handleRunError(err: unknown): void {
   if (err instanceof CancelledError) {
-    status('キャンセルしました');
-    renderMessage(ui.results, 'キャンセルしました。');
+    status('Cancelled');
+    renderMessage(ui.results, 'Cancelled.');
     document.body.dataset.lastRun = 'cancelled';
     // engine.cancel() restarts the worker and sets the state back to ready.
   } else {
     renderMessage(ui.results, String((err as Error).message ?? err), 'error');
-    status('エラー');
+    status('Error');
     document.body.dataset.lastRun = 'error';
     setState('ready');
   }
@@ -205,13 +209,13 @@ async function run(prefix = ''): Promise<void> {
   setState('running');
   tabs.setDiagnostics(new Map());
   const started = performance.now();
-  const timer = setInterval(() => status(`${prefix}検査中… ${((performance.now() - started) / 1000).toFixed(1)} 秒`), 100);
-  status(`${prefix}検査中…`);
+  const timer = setInterval(() => status(`${prefix}Linting… ${((performance.now() - started) / 1000).toFixed(1)} s`), 100);
+  status(`${prefix}Linting…`);
   try {
     const files = collectFiles();
     const result = await engine.lint(files);
     const seconds = ((performance.now() - started) / 1000).toFixed(2);
-    status(showResult(result, codeFiles(files)) ? `${prefix}完了（${seconds} 秒）` : `${prefix}失敗（${seconds} 秒）`);
+    status(showResult(result, codeFiles(files)) ? `${prefix}Done (${seconds} s)` : `${prefix}Failed (${seconds} s)`);
     setState('ready');
   } catch (err) {
     handleRunError(err);
@@ -225,7 +229,7 @@ async function fixAll(): Promise<void> {
   if (state !== 'ready' || !engine) return;
   setState('running');
   tabs.setDiagnostics(new Map());
-  status('自動修正中…');
+  status('Fixing…');
   try {
     const result = await engine.fix(collectFiles());
     const changed = Object.entries(result.files)
@@ -235,11 +239,11 @@ async function fixAll(): Promise<void> {
       const remaining = result.issues!.length;
       status(
         changed.length
-          ? `自動修正しました（${changed.join(', ')}）。残りの指摘: ${remaining} 件`
-          : `自動修正できる指摘はありませんでした（指摘: ${remaining} 件）`,
+          ? `Fixed ${changed.join(', ')}. Remaining issues: ${remaining}`
+          : `Nothing to fix automatically (issues: ${remaining})`,
       );
     } else {
-      status('失敗しました');
+      status('Failed');
     }
     setState('ready');
   } catch (err) {
@@ -253,25 +257,25 @@ async function quickFix(issue: Issue, fix: Fix): Promise<void> {
   const current = tabs.content(issue.file);
   // The fix's offsets refer to the linted content.
   if (current === null || lintedContents?.[issue.file] !== current) {
-    status('Run のあとでコードが変更されたため、この修正は適用できません。もう一度 Run してください');
+    status('The code changed after the run, so this fix cannot be applied. Run again.');
     return;
   }
   let next: string;
   try {
     next = applyFix(current, fix);
   } catch (err) {
-    status(`修正を適用できませんでした: ${(err as Error).message}`);
+    status(`Could not apply the fix: ${(err as Error).message}`);
     return;
   }
   tabs.replaceContent(issue.file, next);
-  await run(`${issue.linter} の修正を適用しました。再`);
+  await run(`Applied the ${issue.linter} fix. `);
 }
 
 /** Formats all Go files with goimports (which also adds missing imports). */
 async function format(): Promise<void> {
   if (state !== 'ready' || !engine) return;
   setState('running');
-  status('goimports で整形中…');
+  status('Formatting with goimports…');
   delete document.body.dataset.lastFormat;
   try {
     const result = await engine.format(tabs.contents());
@@ -282,22 +286,22 @@ async function format(): Promise<void> {
     // `(goimports) formatting file NAME: ...`.
     const failed = [...new Set([...result.log.matchAll(/formatting file (\S+?):/g)].map((m) => m[1]))];
     if (failed.length) {
-      status(`構文エラーのため整形できなかったファイルがあります: ${failed.join(', ')}`);
+      status(`Could not format files with syntax errors: ${failed.join(', ')}`);
       ui.log.textContent = result.log;
       ui.logDetails.hidden = false;
     } else if (changed.length) {
-      status(`goimports で整形しました（${changed.join(', ')}）`);
+      status(`Formatted with goimports: ${changed.join(', ')}`);
     } else {
-      status('goimports で整形しました（変更はありません）');
+      status('Formatted with goimports (no changes)');
     }
     document.body.dataset.lastFormat = failed.length ? 'failed' : 'ok';
     setState('ready');
   } catch (err) {
     if (err instanceof CancelledError) {
-      status('キャンセルしました');
+      status('Cancelled');
       // engine.cancel() restarts the worker and sets the state back to ready.
     } else {
-      status(`整形に失敗しました: ${(err as Error).message ?? err}`);
+      status(`Formatting failed: ${(err as Error).message ?? err}`);
       document.body.dataset.lastFormat = 'error';
       setState('ready');
     }
@@ -307,12 +311,12 @@ async function format(): Promise<void> {
 async function cancel(): Promise<void> {
   if (state !== 'running' || !engine) return;
   ui.cancel.disabled = true;
-  status('キャンセル中…');
+  status('Cancelling…');
   try {
     await engine.cancel();
     setState('ready');
   } catch (err) {
-    status(`再起動に失敗しました: ${(err as Error).message}`);
+    status(`Could not restart the engine: ${(err as Error).message}`);
     setState('error');
   } finally {
     ui.cancel.disabled = false;
@@ -335,11 +339,11 @@ async function share(): Promise<void> {
   history.replaceState(null, '', `#${hash}`);
   try {
     await navigator.clipboard.writeText(location.href);
-    status('共有 URL をコピーしました');
+    status('Copied the share URL');
   } catch {
-    status('共有 URL をアドレスバーに設定しました');
+    status('The share URL is in the address bar');
   }
-  if (location.href.length > 8000) notice('共有 URL がとても長くなっています。一部の環境では開けない可能性があります。');
+  if (location.href.length > 8000) notice('The share URL is very long. Some environments may not be able to open it.');
 }
 
 /** Loads a shared snapshot from the URL fragment. Shared code is never run automatically. */
@@ -350,7 +354,7 @@ async function loadFromHash(): Promise<string | null> {
     load(s.code, s.config);
     return s.version;
   } catch (err) {
-    notice(`共有 URL を読み込めませんでした: ${(err as Error).message}`);
+    notice(`Could not load the shared link: ${(err as Error).message}`);
     return null;
   }
 }
@@ -387,27 +391,27 @@ async function loadEngine(info: VersionInfo): Promise<void> {
   await engine.load(({ loaded, total }) => {
     ui.progress.max = total || 1;
     ui.progress.value = loaded;
-    status(loaded < total ? `golangci-lint ${info.version} をダウンロード中… ${mb(loaded)} / ${mb(total)} MB` : '準備中…');
+    status(loaded < total ? `Downloading golangci-lint ${info.version}… ${mb(loaded)} / ${mb(total)} MB` : 'Preparing…');
   });
   ui.progress.hidden = true;
-  status(`golangci-lint ${info.version}（${info.goVersion}）の準備ができました`);
+  status(`golangci-lint ${info.version} (${info.goVersion}) is ready`);
   setState('ready');
 }
 
 async function main(): Promise<void> {
   setState('loading');
-  if (!isChrome()) notice('この playground は Google Chrome で動作確認しています。他のブラウザでは正しく動作しない場合があります。');
+  if (!isChrome()) notice('This playground is tested with Google Chrome. It may not work correctly in other browsers.');
 
   const sharedVersion = await loadFromHash();
   window.addEventListener('hashchange', () => void loadFromHash());
 
   manifest = await fetchVersions(base);
-  for (const v of manifest.versions) ui.version.append(new Option(`${v.version}（${v.goVersion}）`, v.version));
+  for (const v of manifest.versions) ui.version.append(new Option(`${v.version} (${v.goVersion})`, v.version));
   let info = manifest.versions.find((v) => v.version === manifest!.default)!;
   if (sharedVersion) {
     const shared = manifest.versions.find((v) => v.version === sharedVersion);
     if (shared) info = shared;
-    else notice(`共有された golangci-lint ${sharedVersion} は利用できないため、${info.version} で開きました。`);
+    else notice(`golangci-lint ${sharedVersion} from the shared link is not available, so it was opened with ${info.version}.`);
   }
   ui.version.value = info.version;
   await loadEngine(info);
@@ -426,10 +430,10 @@ ui.sample.addEventListener('change', () => {
   const sample = SAMPLES.find((s) => s.id === ui.sample.value);
   ui.sample.value = '';
   if (!sample) return;
-  if (isModified() && !confirm(`編集中の内容を「${sample.title}」で置き換えますか？`)) return;
+  if (isModified() && !confirm(`Replace the current code and configuration with the sample "${sample.title}"?`)) return;
   load(sample.code, sample.config);
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
-  status(`サンプル「${sample.title}」: ${sample.description}`);
+  status(`Sample "${sample.title}": ${sample.description}`);
 });
 ui.version.addEventListener('change', () => {
   const info = manifest?.versions.find((v) => v.version === ui.version.value);
@@ -438,8 +442,8 @@ ui.version.addEventListener('change', () => {
 
 function fail(err: unknown): void {
   ui.progress.hidden = true;
-  status(`読み込みに失敗しました: ${(err as Error).message ?? err}`);
-  renderMessage(ui.results, `golangci-lint を読み込めませんでした。\n${(err as Error).message ?? err}`, 'error');
+  status(`Failed to load: ${(err as Error).message ?? err}`);
+  renderMessage(ui.results, `Could not load golangci-lint.\n${(err as Error).message ?? err}`, 'error');
   setState('error');
 }
 

@@ -1,5 +1,5 @@
-基本
-よくある指摘（エラーの無視、使われない代入、printf の書式、閉じ忘れ）を標準のリンターで検査します。
+Basics
+Common issues (ignored errors, ineffectual assignments, printf formats, unclosed bodies) found by the standard linters.
 -- main.go --
 package main
 

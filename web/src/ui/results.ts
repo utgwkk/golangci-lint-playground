@@ -18,11 +18,11 @@ export function renderIssues(
   issues: Issue[],
   onSelect: (issue: Issue) => void,
   onFix?: (issue: Issue, fix: Fix) => void,
-  fixLabel: (fix: Fix) => string = () => '修正',
+  fixLabel: (fix: Fix) => string = () => 'Fix',
 ): void {
   container.replaceChildren();
   if (!issues.length) {
-    container.append(el('p', 'clean', '指摘はありません'));
+    container.append(el('p', 'clean', 'No issues'));
     return;
   }
   const list = el('ul', 'issues');
@@ -41,7 +41,7 @@ export function renderIssues(
     item.append(button);
     if (onFix) {
       for (const fix of issue.fixes ?? []) {
-        const apply = el('button', 'quick-fix', '修正');
+        const apply = el('button', 'quick-fix', 'Fix');
         apply.type = 'button';
         apply.title = fixLabel(fix);
         apply.addEventListener('click', () => onFix(issue, fix));

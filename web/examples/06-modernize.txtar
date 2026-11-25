@@ -1,5 +1,5 @@
-新しい書き方への置き換え（modernize）
-modernize は、新しい Go の機能や標準ライブラリで書き直せる箇所を見つけます。
+Modernize
+modernize finds code that can be simplified with newer Go features and standard library functions.
 -- main.go --
 package main
 

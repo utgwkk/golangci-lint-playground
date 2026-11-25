@@ -216,7 +216,7 @@ test('completes, documents and checks the configuration with the schema', async 
   // Typos get a warning with a suggestion.
   await setEditor(page, 'config', 'version: "2"\nlinters:\n  enable:\n    - errchek\n');
   await page.locator('#config .cm-lintRange-warning').first().hover();
-  await expect(page.locator('.cm-tooltip-hover')).toContainText('もしかして: errcheck');
+  await expect(page.locator('.cm-tooltip-hover')).toContainText('Did you mean errcheck?');
 
   // Hovering a linter name shows its description.
   await setEditor(page, 'config', 'version: "2"\nlinters:\n  enable:\n    - govet\n');
@@ -291,7 +291,7 @@ test('formats with the keyboard shortcut and reports files it cannot parse', asy
   const broken = 'package main\n\nfunc broken( {\n';
   await setEditor(page, 'code', broken);
   expect(await formatCode(page)).toBe('failed');
-  await expect(page.locator('#status-text')).toContainText('構文エラーのため整形できなかったファイルがあります: main.go');
+  await expect(page.locator('#status-text')).toContainText('Could not format files with syntax errors: main.go');
   expect(await codeText(page)).toBe(broken);
 });
 
@@ -364,6 +364,8 @@ test('picks up redeployed assets without a forced reload', async ({ page }) => {
   }
 });
 
+// The Japanese comment is deliberate: multibyte text before the fixes, whose
+// edits use byte offsets.
 const FIXABLE_CODE =
   'package main\n\nimport "fmt"\n\n// 日本語のコメント\nfunc main() {\n\tfor i := 0; i < 3; i++ {\n\t\tfmt.Println(i)\n\t}\n\tfmt.Println("occured")\n\tm := 10\n\tif m > 5 {\n\t\tm = 5\n\t}\n\tfmt.Println(m)\n}\n';
 const FIXABLE_CONFIG = 'version: "2"\nlinters:\n  default: none\n  enable: [modernize, misspell, errcheck]\n';
@@ -384,7 +386,7 @@ test('fixes all auto-fixable issues with the Fix button', async ({ page }) => {
   expect(await codeText(page)).toBe(
     'package main\n\nimport "fmt"\n\n// 日本語のコメント\nfunc main() {\n\tfor i := range 3 {\n\t\tfmt.Println(i)\n\t}\n\tfmt.Println("occurred")\n\tm := min(10, 5)\n\tfmt.Println(m)\n}\n',
   );
-  await expect(page.locator('#status-text')).toHaveText('自動修正しました（main.go）。残りの指摘: 0 件');
+  await expect(page.locator('#status-text')).toHaveText('Fixed main.go. Remaining issues: 0');
 
   // Undoable.
   await page.locator('#code .cm-content').click();
@@ -402,7 +404,7 @@ test('applies quick fixes from the results and the editor, then lints again', as
   const misspell = page.locator('.issues li', { has: page.locator('.badge', { hasText: 'misspell' }) });
   expect((await waitForRun(page, () => misspell.locator('.quick-fix').click())).sort()).toEqual(['modernize', 'modernize']);
   await expect(page.locator('#code .cm-content')).toContainText('fmt.Println("occurred")');
-  await expect(page.locator('#status-text')).toContainText('misspell の修正を適用しました。再完了');
+  await expect(page.locator('#status-text')).toContainText('Applied the misspell fix. Done');
 
   // From the diagnostic in the editor.
   await page.locator('#code .cm-line', { hasText: 'for i := 0' }).locator('.cm-lintRange').first().hover();
@@ -420,6 +422,6 @@ test('refuses quick fixes for code changed after the run', async ({ page }) => {
   await page.keyboard.press('End');
   await page.keyboard.type(' // edited');
   await page.locator('.issues li', { has: page.locator('.badge', { hasText: 'misspell' }) }).locator('.quick-fix').click();
-  await expect(page.locator('#status-text')).toContainText('もう一度 Run してください');
+  await expect(page.locator('#status-text')).toContainText('Run again.');
   await expect(page.locator('#code .cm-content')).toContainText('fmt.Println("occured")');
 });

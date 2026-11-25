@@ -23,10 +23,10 @@ export interface ToolsPanelOptions {
 }
 
 const DEFAULT_LABELS: Record<LinterDefault, string> = {
-  standard: 'standard（golangci-lint の既定）',
-  all: 'all（すべて）',
-  fast: 'fast（速いものだけ）',
-  none: 'none（なし。enable に書いたものだけ）',
+  standard: 'standard (golangci-lint default)',
+  all: 'all',
+  fast: 'fast (fast linters only)',
+  none: 'none (only those in enable)',
 };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] {
@@ -46,10 +46,10 @@ export class ToolsPanel {
     const d = opts.dialog;
     d.replaceChildren();
     const close = el('button', { type: 'button', className: 'dialog-close', textContent: '×' });
-    close.setAttribute('aria-label', '閉じる');
+    close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', () => d.close());
     this.body = el('div', { className: 'tools-body' });
-    d.append(el('div', { className: 'dialog-header' }, el('h2', { textContent: 'リンターとフォーマッタ' }), close), this.body);
+    d.append(el('div', { className: 'dialog-header' }, el('h2', { textContent: 'Linters and formatters' }), close), this.body);
     d.addEventListener('click', (e) => {
       if (e.target === d) d.close(); // click on the backdrop
     });
@@ -70,7 +70,7 @@ export class ToolsPanel {
     try {
       this.opts.apply(make(this.opts.getText()));
     } catch (err) {
-      alert(`設定を変更できませんでした: ${(err as Error).message}`);
+      alert(`Could not change the configuration: ${(err as Error).message}`);
     }
     this.render();
   }
@@ -87,14 +87,14 @@ export class ToolsPanel {
     const badges = el('span', { className: 'badges' });
     const badge = (text: string, cls = '', title = '') => badges.append(el('span', { className: `tool-badge ${cls}`, textContent: text, title }));
     if (kind === 'linter') {
-      if (tool.groups?.includes('standard')) badge('standard', '', 'linters.default: standard に含まれる');
-      if (tool.fast) badge('fast', '', 'linters.default: fast に含まれる');
-      if (cfg.enable.includes(tool.name)) badge('enable', 'set', 'linters.enable に書かれている');
-      if (cfg.disable.includes(tool.name)) badge('disable', 'set', 'linters.disable に書かれている');
+      if (tool.groups?.includes('standard')) badge('standard', '', 'Included in linters.default: standard');
+      if (tool.fast) badge('fast', '', 'Included in linters.default: fast');
+      if (cfg.enable.includes(tool.name)) badge('enable', 'set', 'Listed in linters.enable');
+      if (cfg.disable.includes(tool.name)) badge('disable', 'set', 'Listed in linters.disable');
     }
-    if (tool.autoFix) badge('autofix', '', '自動修正に対応');
-    if (tool.deprecated) badge('deprecated', 'warn', '非推奨');
-    if (UNSUPPORTED_LINTERS[tool.name]) badge('ブラウザ非対応', 'warn', UNSUPPORTED_LINTERS[tool.name]);
+    if (tool.autoFix) badge('autofix', '', 'Supports auto-fix');
+    if (tool.deprecated) badge('deprecated', 'warn', 'Deprecated');
+    if (UNSUPPORTED_LINTERS[tool.name]) badge('unsupported in browser', 'warn', UNSUPPORTED_LINTERS[tool.name]);
     return el(
       'li',
       { className: 'tool' + (enabled ? ' enabled' : '') },
@@ -109,20 +109,20 @@ export class ToolsPanel {
       .filter((t) => !this.onlyEnabled || isEnabled(t));
     const enabled = tools.filter(isEnabled).length;
     const list = el('ul', { className: 'tools' }, ...shown.map((t) => this.row(t, isEnabled(t), kind, cfg)));
-    if (!shown.length) list.append(el('li', { className: 'tool-empty', textContent: '該当するものはありません' }));
-    return el('section', {}, el('h3', { textContent: `${title}（${enabled} / ${tools.length} 有効）` }), list);
+    if (!shown.length) list.append(el('li', { className: 'tool-empty', textContent: 'No matches' }));
+    return el('section', {}, el('h3', { textContent: `${title} (${enabled} of ${tools.length} enabled)` }), list);
   }
 
   private render(): void {
     const b = this.body;
     b.replaceChildren();
     if (!this.catalog) {
-      b.append(el('p', { textContent: 'golangci-lint を読み込んでいます…' }));
+      b.append(el('p', { textContent: 'Loading golangci-lint…' }));
       return;
     }
     const cfg = readToolConfig(this.opts.getText());
     if (!cfg) {
-      b.append(el('p', { className: 'error', textContent: '.golangci.yml に YAML の構文エラーがあります。直してから開いてください。' }));
+      b.append(el('p', { className: 'error', textContent: '.golangci.yml has a YAML syntax error. Fix it, then open this dialog again.' }));
       return;
     }
 
@@ -130,8 +130,8 @@ export class ToolsPanel {
     def.setAttribute('aria-label', 'linters.default');
     def.addEventListener('change', () => this.edit((text) => setLinterDefault(text, def.value as LinterDefault)));
 
-    const search = el('input', { type: 'search', placeholder: '名前や説明で絞り込み', value: this.query });
-    search.setAttribute('aria-label', '絞り込み');
+    const search = el('input', { type: 'search', placeholder: 'Filter by name or description', value: this.query });
+    search.setAttribute('aria-label', 'Filter');
     search.addEventListener('input', () => {
       this.query = search.value;
       this.renderLists(cfg);
@@ -143,11 +143,11 @@ export class ToolsPanel {
     });
 
     b.append(
-      el('p', { className: 'tools-note', textContent: 'チェックを切り替えると、.golangci.yml の該当箇所だけを書き換えます（コメントや並び順はそのまま）。' }),
+      el('p', { className: 'tools-note', textContent: 'Changes rewrite only the affected part of .golangci.yml (comments and ordering are kept).' }),
       el('div', { className: 'tools-controls' },
         el('label', {}, 'linters.default ', def),
         search,
-        el('label', { className: 'only-enabled' }, only, ' 有効なものだけ'),
+        el('label', { className: 'only-enabled' }, only, ' Enabled only'),
       ),
       el('div', { className: 'tools-lists' }),
     );
@@ -158,8 +158,8 @@ export class ToolsPanel {
     const lists = this.body.querySelector('.tools-lists');
     if (!lists || !this.catalog) return;
     lists.replaceChildren(
-      this.section('フォーマッタ', this.catalog.formatters, (t) => cfg.formatters.includes(t.name), 'formatter', cfg),
-      this.section('リンター', this.catalog.linters, (t) => isLinterEnabled(t, cfg), 'linter', cfg),
+      this.section('Formatters', this.catalog.formatters, (t) => cfg.formatters.includes(t.name), 'formatter', cfg),
+      this.section('Linters', this.catalog.linters, (t) => isLinterEnabled(t, cfg), 'linter', cfg),
     );
   }
 }

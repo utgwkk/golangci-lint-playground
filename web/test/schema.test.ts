@@ -35,27 +35,27 @@ describe('SchemaTree validation', () => {
 
   it('reports unknown keys with suggestions', () => {
     expect(validate('version: "2"\nlinters:\n  enabel: [errcheck]\n')).toEqual([
-      { path: ['linters', 'enabel'], atKey: true, message: '不明なキーです: enabel。もしかして: enable' },
+      { path: ['linters', 'enabel'], atKey: true, message: 'Unknown key: enabel. Did you mean enable?' },
     ]);
   });
 
   it('reports wrong values', () => {
     const issues = validate('version: "2"\nrun:\n  timeout: soon\n  concurrency: -1\nlinters:\n  default: everything\n  enable: [errchek, govet, govet]\n');
     expect(issues.map((i) => [i.path.join('.'), i.message])).toEqual([
-      ['run.timeout', '形式が正しくありません（パターン: ^\\d+[smh]$）'],
-      ['run.concurrency', '0 以上の値にしてください'],
-      ['linters.default', '使えない値です: "everything"（使える値: "standard", "all", "none", "fast"）'],
-      ['linters.enable.0', '使えない値です: "errchek"。もしかして: errcheck'],
+      ['run.timeout', 'Does not match the pattern ^\\d+[smh]$'],
+      ['run.concurrency', 'Must be at least 0'],
+      ['linters.default', 'Invalid value: "everything" (allowed: "standard", "all", "none", "fast")'],
+      ['linters.enable.0', 'Invalid value: "errchek". Did you mean errcheck?'],
     ]);
-    expect(validate('version: "2"\nlinters:\n  settings:\n    govet:\n      enable: [printf, printf]\n')[0].message).toBe('重複しています: "printf"');
+    expect(validate('version: "2"\nlinters:\n  settings:\n    govet:\n      enable: [printf, printf]\n')[0].message).toBe('Duplicate item: "printf"');
   });
 
   it('checks types, required keys and anyOf', () => {
     expect(validate('run:\n  concurrency: many\n').map((i) => i.message)).toEqual([
-      '必須のキーがありません: version',
-      '型が違います（期待: integer、実際: string）',
+      'Missing required key: version',
+      'Wrong type: expected integer, got string',
     ]);
-    expect(validate('version: "2"\nlinters:\n  exclusions:\n    rules:\n      - text: x\n')[0].message).toBe('必須のキーがありません: path');
+    expect(validate('version: "2"\nlinters:\n  exclusions:\n    rules:\n      - text: x\n')[0].message).toBe('Missing required key: path');
   });
 
   it('suggests close words only', () => {
@@ -101,9 +101,9 @@ describe('unknown linter names', () => {
     const text = 'version: "2"\nlinters:\n  enable: [errchek, govet]\n  disable:\n    - nosuch\n  exclusions:\n    rules:\n      - path: x\n        linters: [gvet]\n';
     const ds = schemaDiagnostics(new SchemaTree({}), text, catalog);
     expect(ds.map((d) => [text.slice(d.from, d.to), d.message])).toEqual([
-      ['errchek', '不明なリンターです: errchek。もしかして: errcheck'],
-      ['nosuch', '不明なリンターです: nosuch'],
-      ['gvet', '不明なリンターです: gvet。もしかして: govet'],
+      ['errchek', 'Unknown linter: errchek. Did you mean errcheck?'],
+      ['nosuch', 'Unknown linter: nosuch'],
+      ['gvet', 'Unknown linter: gvet. Did you mean govet?'],
     ]);
   });
 });
