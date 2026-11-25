@@ -1,5 +1,5 @@
-スタイルのリンター
-revive・gocritic・misspell など、コードの書き方を指摘するリンターの例です。
+Style linters
+Linters that report style issues, such as revive, gocritic and misspell.
 -- main.go --
 package main
 

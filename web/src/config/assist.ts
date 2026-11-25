@@ -77,7 +77,7 @@ export function schemaHover(tree: SchemaTree, catalog: Catalog) {
       const tool = toolDescription(catalog, hit.node.value);
       if (tool) {
         title = tool.name;
-        text = tool.description + (tool.deprecated ? '（deprecated）' : '');
+        text = tool.description + (tool.deprecated ? ' (deprecated)' : '');
       }
     }
     text ??= tree.description(hit.path);
@@ -126,7 +126,7 @@ export function unknownLinterDiagnostics(doc: Document, catalog: Catalog): Diagn
         to: item.range[1],
         severity: 'warning',
         source: 'playground',
-        message: `不明なリンターです: ${item.value}${hint ? `。もしかして: ${hint}` : ''}`,
+        message: `Unknown linter: ${item.value}${hint ? `. Did you mean ${hint}?` : ''}`,
       });
     }
   }

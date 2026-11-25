@@ -57,6 +57,8 @@ jobs:
       - name: Unit tests
         working-directory: web
         run: npm test
+      - name: Check that docs/design.md and docs/design.ja.md are in sync
+        run: node scripts/check-design-sync.mjs
 
   # Builds golangci-lint for js/wasm, the std bundle, the seeded cache and the
   # native build of the same version. The independent steps inside run in

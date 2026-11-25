@@ -7,9 +7,9 @@
 import { isMap, isScalar, isSeq, parseDocument, type Document, type Node } from 'yaml';
 
 export const UNSUPPORTED_LINTERS: Record<string, string> = {
-  gomoddirectives: 'gomoddirectives は go コマンド（go list -m）を使うため、ブラウザでは動作しません（無視されます）。',
-  gomodguard: 'gomodguard はモジュールの依存関係を検査します。playground は標準ライブラリのみ対応のため、何も検出しません。',
-  gomodguard_v2: 'gomodguard_v2 はモジュールの依存関係を検査します。playground は標準ライブラリのみ対応のため、何も検出しません。',
+  gomoddirectives: 'gomoddirectives runs the go command (go list -m), which is not available in the browser, so it is skipped.',
+  gomodguard: 'gomodguard checks module dependencies. The playground supports the standard library only, so it never reports anything.',
+  gomodguard_v2: 'gomodguard_v2 checks module dependencies. The playground supports the standard library only, so it never reports anything.',
 };
 
 export interface ConfigDiagnostic {
@@ -55,7 +55,7 @@ export function checkConfig(text: string): ConfigDiagnostic[] {
       from: r[0],
       to: r[1],
       severity: 'warning',
-      message: 'golangci-lint v2 の設定には version: "2" が必要です（v1 形式の設定は v2 形式への移行が必要です）。',
+      message: 'golangci-lint v2 configurations need version: "2" (v1 configurations must be migrated to v2).',
     });
   }
 
@@ -82,7 +82,7 @@ export function checkConfig(text: string): ConfigDiagnostic[] {
         from,
         to,
         severity: 'info',
-        message: `次のリンターはブラウザでは動作しません: ${affected.join(', ')}（linters.disable に追加すると、この案内は消えます）`,
+        message: `These linters do not work in the browser: ${affected.join(', ')} (add them to linters.disable to hide this note)`,
       });
     }
   }
@@ -94,7 +94,7 @@ export function checkConfig(text: string): ConfigDiagnostic[] {
       from: custom[0],
       to: custom[1],
       severity: 'warning',
-      message: 'カスタムリンター（プラグイン）は playground では読み込めません。',
+      message: 'Custom linters (plugins) cannot be loaded in the playground.',
     });
   }
 
@@ -105,7 +105,7 @@ export function checkConfig(text: string): ConfigDiagnostic[] {
       from: ruleguard[0],
       to: ruleguard[1],
       severity: 'warning',
-      message: 'gocritic の ruleguard は、ルールファイルが標準ライブラリ以外のパッケージを使うため動作しません。',
+      message: "gocritic's ruleguard does not work in the playground: rule files import a package outside the standard library.",
     });
   }
   return out;

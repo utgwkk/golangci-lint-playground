@@ -1,5 +1,5 @@
-複数のパッケージ
-go.mod と複数のファイル・パッケージを使う例です。タブでファイルを切り替えられます。
+Multiple packages
+A module with go.mod and several files and packages. Switch between files with the tabs.
 -- go.mod --
 module example.com/app
 

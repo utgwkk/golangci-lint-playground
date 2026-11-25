@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,26 +15,26 @@
       <select id="version" disabled></select>
     </label>
     <button id="run" class="primary" disabled title="Ctrl+Enter / ⌘+Enter">Run</button>
-    <button id="format" disabled title="goimports で整形し、足りない import を追加します（Shift+Alt+F）">Format</button>
-    <button id="fix" disabled title="自動修正できる指摘をまとめて修正します（golangci-lint run --fix）">Fix</button>
+    <button id="format" disabled title="Format with goimports and add missing imports (Shift+Alt+F)">Format</button>
+    <button id="fix" disabled title="Fix all auto-fixable issues (golangci-lint run --fix)">Fix</button>
     <button id="cancel" hidden>Cancel</button>
     <button id="share" title="Copy a link to this code and configuration">Share</button>
     <label class="samples">
-      <span class="visually-hidden">サンプル</span>
+      <span class="visually-hidden">Samples</span>
       <select id="sample">
-        <option value="">サンプルを開く…</option>
+        <option value="">Open a sample…</option>
       </select>
     </label>
     <div id="status" class="status" role="status" aria-live="polite">
       <progress id="progress" hidden></progress>
-      <span id="status-text">読み込み中…</span>
+      <span id="status-text">Loading…</span>
     </div>
   </header>
   <div id="notice" class="notice" hidden></div>
   <main class="layout">
     <section class="pane code-pane" aria-label="Go code">
       <div class="pane-header tabs-header">
-        <div id="tabs" class="tabs" role="tablist" aria-label="ファイル"></div>
+        <div id="tabs" class="tabs" role="tablist" aria-label="Files"></div>
       </div>
       <div id="code" class="editor"></div>
     </section>
@@ -42,22 +42,22 @@
       <div class="pane-header">
         <span>.golangci.yml</span>
         <span class="header-actions">
-          <button id="open-tools" class="link" disabled>リンターを選ぶ</button>
-          <button id="reset-config" class="link">デフォルトに戻す</button>
+          <button id="open-tools" class="link" disabled>Choose linters</button>
+          <button id="reset-config" class="link">Reset to default</button>
         </span>
       </div>
       <div id="config" class="editor"></div>
     </section>
     <section class="pane results-pane" aria-label="Results">
-      <div class="pane-header"><span>結果</span><span id="summary" class="hint"></span></div>
-      <div id="results" class="results"><p class="placeholder">Run を押すと golangci-lint で検査します。</p></div>
+      <div class="pane-header"><span>Results</span><span id="summary" class="hint"></span></div>
+      <div id="results" class="results"><p class="placeholder">Press Run to lint with golangci-lint.</p></div>
       <details id="log-details" class="log" hidden>
-        <summary>golangci-lint のログ</summary>
+        <summary>golangci-lint log</summary>
         <pre id="log"></pre>
       </details>
     </section>
   </main>
-  <dialog id="tools-dialog" class="tools-dialog" aria-label="リンターとフォーマッタ"></dialog>
+  <dialog id="tools-dialog" class="tools-dialog" aria-label="Linters and formatters"></dialog>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

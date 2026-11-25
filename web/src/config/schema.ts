@@ -251,27 +251,27 @@ export class SchemaTree {
   private checkOne(value: JsonValue, s: Schema, path: Path): SchemaIssue[] {
     const issues: SchemaIssue[] = [];
     if (s.type && !matchesType(value, s.type)) {
-      return [{ path, message: `型が違います（期待: ${[s.type].flat().join(' または ')}、実際: ${typeOf(value)}）` }];
+      return [{ path, message: `Wrong type: expected ${[s.type].flat().join(' or ')}, got ${typeOf(value)}` }];
     }
     if (s.enum && !s.enum.some((e) => equal(e, value))) {
       const hint = typeof value === 'string' ? suggest(value, s.enum.filter((e): e is string => typeof e === 'string')) : null;
-      const choices = s.enum.length <= 8 ? `（使える値: ${s.enum.map(fmt).join(', ')}）` : '';
-      return [{ path, message: `使えない値です: ${fmt(value)}${hint ? `。もしかして: ${hint}` : choices}` }];
+      const choices = s.enum.length <= 8 ? ` (allowed: ${s.enum.map(fmt).join(', ')})` : '';
+      return [{ path, message: `Invalid value: ${fmt(value)}${hint ? `. Did you mean ${hint}?` : choices}` }];
     }
-    if (s.const !== undefined && !equal(s.const, value)) return [{ path, message: `値は ${fmt(s.const)} にしてください` }];
+    if (s.const !== undefined && !equal(s.const, value)) return [{ path, message: `Must be ${fmt(s.const)}` }];
 
     if (typeof value === 'string' && s.pattern && !regexp(s.pattern)?.test(value)) {
-      issues.push({ path, message: `形式が正しくありません（パターン: ${s.pattern}）` });
+      issues.push({ path, message: `Does not match the pattern ${s.pattern}` });
     }
     if (typeof value === 'number') {
-      if (s.minimum !== undefined && value < s.minimum) issues.push({ path, message: `${s.minimum} 以上の値にしてください` });
-      if (s.maximum !== undefined && value > s.maximum) issues.push({ path, message: `${s.maximum} 以下の値にしてください` });
+      if (s.minimum !== undefined && value < s.minimum) issues.push({ path, message: `Must be at least ${s.minimum}` });
+      if (s.maximum !== undefined && value > s.maximum) issues.push({ path, message: `Must be at most ${s.maximum}` });
     }
     if (Array.isArray(value)) {
       if (s.uniqueItems) {
         const seen = new Set<string>();
         value.forEach((item, i) => {
-          if (seen.has(fmt(item))) issues.push({ path: [...path, i], message: `重複しています: ${fmt(item)}` });
+          if (seen.has(fmt(item))) issues.push({ path: [...path, i], message: `Duplicate item: ${fmt(item)}` });
           seen.add(fmt(item));
         });
       }
@@ -280,13 +280,13 @@ export class SchemaTree {
       });
     } else if (value !== null && typeof value === 'object') {
       for (const req of s.required ?? []) {
-        if (!(req in value)) issues.push({ path, message: `必須のキーがありません: ${req}` });
+        if (!(req in value)) issues.push({ path, message: `Missing required key: ${req}` });
       }
       for (const [key, item] of Object.entries(value)) {
         const subs = this.childrenOf(s, key);
         if (!subs.length && s.additionalProperties === false) {
           const hint = suggest(key, Object.keys(s.properties ?? {}));
-          issues.push({ path: [...path, key], atKey: true, message: `不明なキーです: ${key}${hint ? `。もしかして: ${hint}` : ''}` });
+          issues.push({ path: [...path, key], atKey: true, message: `Unknown key: ${key}${hint ? `. Did you mean ${hint}?` : ''}` });
           continue;
         }
         for (const sub of subs) issues.push(...this.check(item, sub, [...path, key]));
