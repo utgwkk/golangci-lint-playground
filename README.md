@@ -2,7 +2,7 @@
 
 A playground that runs [golangci-lint](https://golangci-lint.run/) entirely in the browser. Write Go code and a `.golangci.yml`, press Run, and a WebAssembly build of golangci-lint lints the code and shows the results in the editor. The code is never sent to a server.
 
-![Screenshot](docs/images/screenshot.png)
+![Screenshot: the Modernize sample linted, with quick fixes in the results](docs/images/screenshot.png)
 
 ## Features
 
@@ -57,6 +57,8 @@ cd web && npm run parity
 ```bash
 cd web && npm run build && npm run e2e
 ```
+
+The screenshot above is taken with `cd web && npm run build && npm run screenshot` (see the [update-readme-screenshot](.claude/skills/update-readme-screenshot/SKILL.md) skill, which Claude Code also uses).
 
 | Directory | Contents |
 | --- | --- |

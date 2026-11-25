@@ -331,7 +331,7 @@ All linting happens in the user's own browser, so the sandbox, rate limiting and
 │   │   ├── share.ts, txtar.ts, samples.ts
 │   │   └── sw.ts                  # Service worker
 │   ├── examples/                  # Samples (txtar)
-│   ├── scripts/                   # Cache generation, versions.json, parity tests, licenses.txt of the web app (Node.js)
+│   ├── scripts/                   # Cache generation, versions.json, parity tests, licenses.txt of the web app, the README screenshot (Node.js)
 │   ├── test/                      # Unit tests (Vitest)
 │   └── e2e/                       # E2E tests (Playwright)
 ├── scripts/
@@ -340,6 +340,7 @@ All linting happens in the user's own browser, so the sandbox, rate limiting and
 ├── testdata/parity/               # Parity test cases (txtar)
 ├── .github/workflows/ci.yml       # Tests and deployment to GitHub Pages
 ├── CLAUDE.md                      # Rules for contributors and coding agents (English only, etc.)
+├── .claude/skills/                # Agent skills (e.g. retaking the README screenshot)
 └── docs/design.md, design.ja.md   # This document (English and Japanese)
 ```
 

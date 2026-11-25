@@ -331,7 +331,7 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 │   │   ├── share.ts, txtar.ts, samples.ts
 │   │   └── sw.ts                  # Service Worker
 │   ├── examples/                  # サンプル集（txtar）
-│   ├── scripts/                   # キャッシュ生成、versions.json、パリティテスト、Web アプリの licenses.txt（Node.js）
+│   ├── scripts/                   # キャッシュ生成、versions.json、パリティテスト、Web アプリの licenses.txt、README のスクリーンショット（Node.js）
 │   ├── test/                      # 単体テスト（Vitest）
 │   └── e2e/                       # E2E テスト（Playwright）
 ├── scripts/
@@ -340,6 +340,7 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 ├── testdata/parity/               # パリティテストのケース（txtar）
 ├── .github/workflows/ci.yml       # テスト・GitHub Pages へのデプロイ
 ├── CLAUDE.md                      # 開発者・コーディングエージェント向けの決まり（英語で書くことなど）
+├── .claude/skills/                # Agent Skills（README のスクリーンショットの撮り直しなど）
 └── docs/design.md, design.ja.md   # 本書（英語版・日本語版）
 ```
 

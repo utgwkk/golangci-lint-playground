@@ -11,7 +11,8 @@
     "seed-cache": "tsx scripts/seed-cache.ts",
     "write-versions": "tsx scripts/write-versions.ts",
     "parity": "tsx scripts/parity.ts",
-    "e2e": "playwright test --trace off"
+    "e2e": "playwright test --trace off",
+    "screenshot": "tsx scripts/screenshot.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.4",
