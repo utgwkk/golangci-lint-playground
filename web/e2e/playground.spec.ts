@@ -294,3 +294,28 @@ test('formats with the keyboard shortcut and reports files it cannot parse', asy
   await expect(page.locator('#status-text')).toContainText('構文エラーのため整形できなかったファイルがあります: main.go');
   expect(await codeText(page)).toBe(broken);
 });
+
+// CodeMirror draws the selection in a layer behind the text, so the active
+// line's background must be translucent or it hides the selection on the
+// cursor's line.
+for (const colorScheme of ['light', 'dark'] as const) {
+  test(`keeps the selection visible on the cursor's line (${colorScheme})`, async ({ browser }) => {
+    const page = await browser.newPage({ colorScheme });
+    await open(page);
+    const line = page.locator('#code .cm-line', { hasText: 'os.Open' });
+    await line.locator('text=config.txt').dblclick();
+    await expect(line).toHaveClass(/cm-activeLine/);
+
+    const selection = page.locator('#code .cm-selectionBackground').first();
+    await expect(selection).toBeVisible();
+    expect((await selection.boundingBox())!.width).toBeGreaterThan(0);
+
+    const alpha = await line.evaluate((el) => {
+      const m = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/);
+      const parts = m ? m[1].split(/[\s,/]+/).filter(Boolean) : [];
+      return parts.length === 4 ? Number(parts[3]) : 1;
+    });
+    expect(alpha).toBeLessThan(0.5);
+    await page.close();
+  });
+}
