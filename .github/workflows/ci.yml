@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: wasm/go.mod
+          cache-dependency-path: wasm/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install npm dependencies
+        working-directory: web
+        run: npm ci
+
+      # Building the assets takes several minutes, so they are cached by the
+      # inputs that affect them.
+      - name: Restore golangci-lint assets
+        id: assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            wasm/dist
+            wasm/.build/golangci-lint
+          key: assets-${{ hashFiles('wasm/**', 'scripts/build-assets.sh', 'web/src/engine/**', 'web/scripts/seed-cache.ts', 'web/scripts/write-versions.ts', 'web/scripts/node-runtime.ts') }}
+
+      - name: Build golangci-lint assets
+        if: steps.assets.outputs.cache-hit != 'true'
+        run: ./scripts/build-assets.sh
+
+      - name: Type check
+        working-directory: web
+        run: npm run typecheck
+
+      - name: Unit tests
+        working-directory: web
+        run: npm test
+
+      - name: Parity with native golangci-lint
+        working-directory: web
+        run: npm run parity
+
+      - name: Build web app
+        working-directory: web
+        run: npm run build
+
+      - name: Install Playwright browser
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E tests
+        working-directory: web
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
+
+      - name: Upload site
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

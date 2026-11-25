@@ -56,7 +56,7 @@ golangci-lint を WebAssembly（js/wasm）にビルドし、**ブラウザの中
 
 ## 2. 前提となる事実（検証済み）
 
-golangci-lint v2.5.0 のネイティブ版と、js/wasm 版の PoC（[付録 A](#付録-a-wasm-方式の-poc-結果)、[`poc/wasm/`](../poc/wasm/README.md)）で確認した事実。
+golangci-lint v2.5.0 のネイティブ版と、js/wasm 版の PoC（[付録 A](#付録-a-wasm-方式の-poc-結果)）・Phase 1 の実装で確認した事実。
 
 | 項目 | 挙動 | 設計への影響 |
 | --- | --- | --- |
@@ -65,15 +65,16 @@ golangci-lint v2.5.0 のネイティブ版と、js/wasm 版の PoC（[付録 A](
 | 依存パッケージの型情報 | golangci-lint は依存パッケージを export data（コンパイラが出力する型情報）から読む | 標準ライブラリの export data をビルド時に生成して同梱する |
 | ファイル操作 | `wasm_exec.js` はブラウザではファイル操作を未実装にしている | Node 互換の `fs` API をメモリ上で実装し、`globalThis.fs` に差し込む |
 | 解析キャッシュ | キャッシュなしの 1 回目は約 22 秒。標準ライブラリ全体の解析キャッシュは gzip 後 0.3MB で、ブラウザと同じパス構成で事前生成すればそのまま有効 | キャッシュをビルド時に生成して同梱する |
-| JSON 出力 | `--output.json.path <path>` で `{"Issues": [...], "Report": {...}}` が得られる。フラグは設定ファイルの `output.*` より優先される | JSON はメモリ上のファイル（例: `/tmp/result.json`）に書かせて読む。ユーザーの YAML は書き換えない |
+| JSON 出力 | `--output.json.path <path>` で `{"Issues": [...], "Report": {...}}` が得られる。フラグは設定ファイルの `output.*` より優先される | JSON はメモリ上のファイル（例: `/tmp/report.json`）に書かせて読む。ユーザーの YAML は書き換えない |
 | Issue の形 | `FromLinter`, `Text`, `Severity`, `SourceLines`, `Pos{Filename,Offset,Line,Column}`, 自動修正可能なものは `SuggestedFixes[].TextEdits[]{Pos,End,NewText}`（`NewText` は base64） | エディタ上のマーカーやクイックフィックスに直接使える |
 | 型エラー | `FromLinter: "typecheck"` として返り、`Pos` は `Line:1, Column:0` 固定、実際の位置は `Text` 内の `./main.go:11:2: ...` に埋め込まれる | `Text` を正規表現で再パースして位置を補正する（PoC で実装済み） |
 | 終了コード | 指摘ありは 1。ブラウザ内では `go` コマンドの起動失敗などをログに出すため 7（エラーをログ出力）になることが多い | 終了コードには依存せず、JSON を正とする |
 | リンター一覧 | `golangci-lint help linters --json` で `name, description, groups, fast, autoFix, deprecated, since, originalURL` が得られる | バージョンごとにビルド時に書き出し、リンター選択 UI に使う |
 | 設定の JSON Schema | golangci-lint のモジュールに `jsonschema/golangci.jsonschema.json` が同梱されている（`config verify` はネットワーク越しに取りに行くので使わない） | ビルド時にモジュールから取り出して同梱する |
 | フォーマッタ | v2 では `formatters` セクションに分離。`golangci-lint fmt` でファイルを整形できる | 「Format」機能は `fmt` サブコマンドで実装する。ただし `gci` はブラウザ内で動かない |
-| `go` コマンドへの依存 | `gomoddirectives`・`gci` は `go` コマンドを起動できず失敗する。golangci-lint は警告をログに出して処理を続ける | 非対応として UI で警告する（[4.6](#46-ブラウザ内で動かない機能の扱い)） |
+| `go` コマンドへの依存 | x/tools の `imports` パッケージ（`goimports`・`gci`・`swaggo` が使う）は `go env` を起動しようとして失敗し、**検査全体が止まる**。`gomoddirectives` は `go list -m` を起動できず無視される | x/tools にもう 1 つパッチを当て、`go env` の代わりに環境変数から値を返す（`goimports`・`gci`・`swaggo` は動くようになった）。残りは非対応として UI で警告する（[4.6](#46-ブラウザ内で動かない機能の扱い)） |
 | Go バージョン | golangci-lint をビルドした Go と、同梱する標準ライブラリの Go は一致している必要がある | バージョンごとに「golangci-lint ＋ Go ツールチェイン」の組を固定してビルドする |
+| 配信時の圧縮 | 多くの静的サーバーは `*.gz` に `Content-Encoding: gzip` を付けるため、ブラウザが自動で展開してしまい、チェックサムが合わなくなる（`vite preview` で発生） | gzip 済みアセットの拡張子は `.bin` にする |
 
 ## 3. 全体アーキテクチャ
 
@@ -82,9 +83,9 @@ golangci-lint v2.5.0 のネイティブ版と、js/wasm 版の PoC（[付録 A](
 │  /index.html, /assets/*            アプリ本体（Vite でビルド）          │
 │  /versions.json                    利用可能な golangci-lint バージョン  │
 │  /v/{version}/                     バージョンごとのアセット（不変）     │
-│     golangci-lint.wasm.gz          js/wasm 版 golangci-lint             │
-│     std.bundle.gz                  標準ライブラリ（ソース・型情報・構成）│
-│     cache.bundle.gz                事前生成した解析キャッシュ           │
+│     golangci-lint.wasm.bin         js/wasm 版 golangci-lint             │
+│     std.bundle.bin                 標準ライブラリ（ソース・型情報・構成）│
+│     cache.bundle.bin               事前生成した解析キャッシュ           │
 │     linters.json / schema.json     リンター一覧・設定の JSON Schema     │
 └───────────────┬───────────────────────────────────────────────────────┘
                 │ HTTPS（初回のみ。以降は Service Worker のキャッシュ）
@@ -117,10 +118,10 @@ golangci-lint v2.5.0 のネイティブ版と、js/wasm 版の PoC（[付録 A](
 | 初回ロード | 約 24MB（gzip 後。WASM 15.1MB + 標準ライブラリ 9.0MB + 事前生成キャッシュ 0.3MB）。2 回目以降はブラウザのキャッシュから読む | 軽い（エディタ UI だけ） |
 | 実行速度 | ブラウザ PoC で 1 回目 約 3 秒、2 回目以降 約 0.9 秒（標準設定） | 約 0.5 秒 |
 | メモリ | 330〜550MB。スマートフォンでは厳しい可能性がある | サーバー側で制御できる |
-| 対応できない機能 | `go` コマンドを内部で起動するリンター・フォーマッタ（`gomoddirectives`、`gci` など）。サードパーティモジュールの対応は難しい | 制約なし |
+| 対応できない機能 | `go` コマンドを内部で起動するリンター（`gomoddirectives` など）。サードパーティモジュールの対応は難しい | 制約なし |
 | メンテナンス | golangci-lint の新バージョンごとに、`golang.org/x/tools` の小さなパッチを当てて再ビルドする | 公式バイナリを使うだけ |
 
-**決定（2026-11-25）: ブラウザ内 WASM 方式（A）を採用する。** ブラウザで動く PoC（[`poc/wasm/`](../poc/wasm/README.md)）で、実用的な速度で動作することを確認した（[付録 A.5](#a5-ブラウザでの検証結果)）。サーバーサイド方式の検討内容は [付録 B](#付録-b-サーバーサイド方式不採用案) に要約を残す。
+**決定（2026-11-25）: ブラウザ内 WASM 方式（A）を採用する。** ブラウザで動く PoC（git 履歴のコミット `bf8c696` 時点の `poc/wasm/`） で、実用的な速度で動作することを確認した（[付録 A.5](#a5-ブラウザでの検証結果)）。サーバーサイド方式の検討内容は [付録 B](#付録-b-サーバーサイド方式不採用案) に要約を残す。
 
 ## 4. コンポーネント詳細
 
@@ -159,17 +160,16 @@ golangci-lint v2.5.0 のネイティブ版と、js/wasm 版の PoC（[付録 A](
 
 ### 4.2 検査エンジン（Web Worker）
 
-PoC の `web/worker.js`・`gofs.js`・`runner.js`・`bundle.js` を TypeScript に移植して本実装とする。
+`web/src/engine/` に実装している（PoC から TypeScript に移植）。メインスレッド側の `client.ts` がアセットの取得・検証・WASM のコンパイルと Worker の管理を、Worker 側の `worker.ts` が MemFS（`gofs.ts`）と golangci-lint の実行（`runner.ts`）を受け持つ。`runner.ts` 以下は Node.js でもそのまま動き、キャッシュ生成とパリティテストに使う。
 
 #### メッセージプロトコル
 
 | 方向 | メッセージ | 内容 |
 | --- | --- | --- |
-| UI → Worker | `init` | `{ version }`。アセットを取得・展開し WASM をコンパイルする |
-| UI → Worker | `lint` | `{ id, files: { name: content }, config }`。検査を実行する |
-| UI → Worker | `fix` / `fmt` | `lint` と同じ入力。`--fix` 付きの実行 / `golangci-lint fmt` を行い、変更後のファイルを返す |
-| UI → Worker | `migrate` | `{ id, config }`。`golangci-lint migrate` で v1 設定を v2 に変換する |
-| Worker → UI | `progress` | `{ name, loaded, total }`。ダウンロードの進捗 |
+| UI → Worker | `init` | `{ module, wasmExecUrl, std, cache, goVersion }`。ダウンロード・チェックサム検証・WASM のコンパイルはメインスレッドで済ませ、コンパイル済みのモジュールとバンドルを渡す。Worker はバンドルを MemFS に展開する |
+| UI → Worker | `lint` | `{ id, files: { name: content } }`。`.golangci.yml` も `files` に含める。検査を実行する |
+| UI → Worker | `fix` / `fmt` | （Phase 3）`lint` と同じ入力。`--fix` 付きの実行 / `golangci-lint fmt` を行い、変更後のファイルを返す |
+| UI → Worker | `migrate` | （Phase 3）`{ id, config }`。`golangci-lint migrate` で v1 設定を v2 に変換する |
 | Worker → UI | `ready` | 初期化完了 |
 | Worker → UI | `result` | `{ id, issues, files?, log, exitCode, ms }` |
 | Worker → UI | `error` | `{ id?, code, message }` |
@@ -178,10 +178,13 @@ PoC の `web/worker.js`・`gofs.js`・`runner.js`・`bundle.js` を TypeScript �
 
 1. `/work` を空にし、ユーザーのファイルと `.golangci.yml`（ユーザーの YAML そのまま）を書き込む。`go.mod` がなければ `module playground` とバンドルした Go のバージョンで補う
 2. 新しい Go インスタンスを作り、以下の引数・環境変数で golangci-lint を起動する
-   - 引数: `run --allow-parallel-runners --output.json.path /tmp/result.json --show-stats=false ./...`
+   - 引数: `run --allow-parallel-runners --output.json.path /tmp/report.json --show-stats=false ./...`
    - 環境変数: `GOROOT=/goroot`、`GOOS=linux`、`GOARCH=amd64`、`CGO_ENABLED=0`、`GOTOOLCHAIN=local`、`GOLANGCI_LINT_CACHE=/cache/golangci-lint`、`WASM_STD_MANIFEST`、`WASM_EXPORT_DIR`、`HOME`
-3. 終了後、`/tmp/result.json` を読んで正規化する（JSON がなければ stdout / stderr をエラーとして返す）。ユーザーの設定で stdout / stderr に出力された内容はログとして返す
+3. 終了後、`/tmp/report.json` を読んで正規化する（JSON がなければ stdout / stderr をエラーとして返す）。ユーザーの設定で stdout / stderr に出力された内容はログとして返す
 4. Go ランタイムが残したタイマー（`go._scheduledTimeouts`）を片付ける（残すと `Go program has already exited` が投げられる）
+5. ログ（stdout / stderr）から、ブラウザで動かしていることによる無害なメッセージ（`go env` の起動失敗、ファイルロックの失敗など）を取り除いてから UI に返す
+
+MemFS には `/dev/null`（書き込みは捨て、読み込みは EOF）を用意している。ないと golangci-lint が毎回警告を出す。
 
 - **実行ごとに新しい Go インスタンス**を作り、MemFS は使い回す。これで golangci-lint の解析キャッシュが実行をまたいで効き、2 回目以降が速くなる（PoC で約 0.9 秒）。WASM のメモリはインスタンスごとに捨てられる
 - 実行は 1 本ずつ直列に処理する（キュー）
@@ -213,19 +216,21 @@ type Issue = {
 
 ### 4.3 ビルドパイプライン
 
-golangci-lint のバージョンごとに、以下のアセットを生成する。PoC の `build.sh` を本実装の土台にする。
+golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/v/<version>/` に生成する。`scripts/build-assets.sh` が全体を実行する（手順 1〜3・5 は `wasm/build.sh`、手順 4 と `versions.json` は `web/scripts/` の Node.js スクリプト）。
 
 | 手順 | 内容 | 出力 |
 | --- | --- | --- |
-| 1. x/tools のパッチ | golangci-lint の `go.mod` が要求する `golang.org/x/tools` をモジュールキャッシュからコピーし、`defaultDriver` へのフック（数行）とプロセス内ドライバ `inproc_js.go`（約 200 行）を追加する。`-modfile` の `replace` で差し替える | — |
-| 2. WASM ビルド | `GOOS=js GOARCH=wasm go build -trimpath -ldflags='-s -w'` | `golangci-lint.wasm.gz`（約 15MB） |
-| 3. 標準ライブラリ | `go list -export -json std`（`CGO_ENABLED=0 GOOS=linux GOARCH=amd64`）から、ソース・export data（`__.PKGDEF` のみ）・パッケージ構成のマニフェストを 1 ファイルにまとめる | `std.bundle.gz`（約 9MB） |
-| 4. キャッシュ | ブラウザと同じ MemFS・同じパスで、Node 上で WASM 版を動かし、公開されている標準ライブラリを全部 import するプログラムを標準設定と `--default=all` で検査する | `cache.bundle.gz`（約 0.3MB） |
-| 5. メタデータ | WASM 版で `help linters --json` / `help formatters --json` を実行。モジュール内の `jsonschema/golangci.jsonschema.json` を取り出す | `linters.json`、`formatters.json`、`schema.json` |
-| 6. 検証 | テストスイート（[9 章](#9-テスト戦略)）を実行する | — |
+| 1. x/tools のパッチ | golangci-lint の `go.mod` が要求する `golang.org/x/tools` をモジュールキャッシュからコピーし、`wasm/xtools/patches/` のパッチを当てて `wasm/xtools/overlay/` のファイルを追加する。パッチは 2 つ: (a) `go/packages` の `defaultDriver` からプロセス内ドライバ（`inproc_js.go`、import 位置付きのエラーも返す）を呼ぶフック、(b) `internal/imports` の `ProcessEnv.init` で `go env` の代わりに値を返すフック（`goenv_js.go`。GOPATH モードで `$GOROOT/src` を探すので `go` コマンドは不要）。`-modfile` の `replace` で差し替える | — |
+| 2. WASM ビルド | `GOOS=js GOARCH=wasm go build -trimpath -ldflags='-s -w'` | `golangci-lint.wasm.bin`（gzip、約 15MB） |
+| 3. 標準ライブラリ | `go list -export -json std`（`CGO_ENABLED=0 GOOS=linux GOARCH=amd64`）から、ソース・export data（`__.PKGDEF` のみ）・パッケージ構成のマニフェストを 1 ファイルにまとめる | `std.bundle.bin`（gzip、約 9.4MB） |
+| 4. キャッシュ | ブラウザと同じ MemFS・同じパスで、Node 上で WASM 版を動かし、公開されている標準ライブラリを全部 import するプログラムを標準設定と `--default=all` で検査する | `cache.bundle.bin`（gzip、約 0.3MB） |
+| 5. メタデータ | 同じバージョンのネイティブ版（手順 2 と同時にビルドし、パリティテストにも使う）で `help linters --json` / `help formatters --json` を実行。モジュール内の `jsonschema/golangci.jsonschema.json` を取り出す | `linters.json`、`formatters.json`、`schema.json`、`build.json`（バージョンと Go のバージョン） |
+| 6. マニフェスト | 各アセットのサイズと SHA-256 を書き出す | `versions.json` |
+| 7. 検証 | テストスイート（[9 章](#9-テスト戦略)）を実行する | — |
 
-- **Go ツールチェインの固定**: golangci-lint の公式リリースと同じ Go のマイナーバージョン（v2.5.0 なら Go 1.25 系）でビルドし、手順 3 の標準ライブラリも同じ Go から作る。PoC は環境の都合で Go 1.24.7 を使ったが、本実装では揃える
+- **Go ツールチェインの固定**: golangci-lint の公式リリースと同じ Go のマイナーバージョン（v2.5.0 なら Go 1.25 系）でビルドし、手順 3 の標準ライブラリも同じ Go から作る。`wasm/go.mod` の `toolchain` 行（v2.5.0 では go1.25.1）で指定し、`wasm/build.sh` が `GOTOOLCHAIN` で強制する
 - **パッチの追従**: x/tools のパッチは `defaultDriver` の冒頭に数行足すだけなので、x/tools が更新されても当たり続ける見込みが高い。当たらなくなったらビルドが失敗するので、CI で気づける
+- **拡張子 `.bin`**: gzip 済みのアセットは `.gz` ではなく `.bin` で配信する。`.gz` だと多くの静的サーバーが `Content-Encoding: gzip` を付け、ブラウザが展開してしまうため（[2 章](#2-前提となる事実検証済み)）
 - **ビルド成果物の不変性**: `/v/{version}/` 以下は一度公開したら変えない。ビルド方法を変えたときは、マニフェスト（`versions.json`）でビルド番号を上げてパスを変える（例: `/v/v2.5.0-2/`）
 
 ### 4.4 共有機能
@@ -258,19 +263,22 @@ golangci-lint のバージョンごとに、以下のアセットを生成する
 
 ### 4.6 ブラウザ内で動かない機能の扱い
 
-ブラウザ内では `go` コマンドを起動できないため、それに依存する機能は動かない。
+ブラウザ内では `go` コマンドを起動できない。Phase 1 で、`go` コマンドを使うコードを持つリンター・フォーマッタを 1 つずつ WASM 版で動かして確認した。
 
-| 機能 | 状態 | 扱い |
+| 機能 | 結果 | 扱い |
 | --- | --- | --- |
-| `gomoddirectives` | PoC で失敗を確認（`go list -m` を起動） | 非対応。設定で有効にされていたら警告マーカーを出す |
-| `gci` フォーマッタ | PoC で失敗を確認（`go env` を起動） | 非対応。同上 |
-| `gomodguard`、`depguard`（`$gostd` 変数）、`gocritic` の ruleguard、`gosec` の一部、`unconvert` | ソースに `go` コマンドを起動する処理があるが、PoC の `--default=all` ではエラーにならなかった。特定の設定のときだけ呼ばれる可能性がある | Phase 1 で設定を変えて検証し、必要なら非対応リストに加える |
+| `goimports`・`swaggo`・`gci` フォーマッタ | パッチ前は x/tools の `imports` パッケージが `go env` を起動しようとして失敗し、**検査全体が止まっていた**。x/tools のパッチ（[4.3](#43-ビルドパイプライン)）で動くようになり、ネイティブと同じ結果になる（`gci` の `localmodule` セクションを含む） | 対応 |
+| `depguard`（`$gostd` 変数）・`gosec`・`unconvert`・`goheader`（`template-path`） | 動作し、ネイティブと同じ結果 | 対応 |
+| `gomoddirectives` | `go list -m` を起動できず、警告をログに出して無視される | 非対応。設定で有効にされていたら警告マーカーを出す |
+| `gomodguard` | エラーは出ないが、モジュールの依存関係を調べるリンターなので、標準ライブラリだけの playground では何も検出しない | 非対応。同上 |
+| gocritic の ruleguard | ルールファイルが `github.com/quasilyte/go-ruleguard/dsl` を import するため読み込めず、「empty rule set」という指摘が出る | 非対応。`linters.settings.gocritic.settings.ruleguard` に警告マーカーを出す |
 | `linters.settings.custom`（プラグイン） | ブラウザ内ではロードできない | 非対応。警告マーカーを出す |
-| 標準ライブラリ以外の import（サードパーティモジュール） | 対応しない（[1.5](#15-スコープの決定事項)）。プロセス内ドライバがエラーを返す | Go エディタの該当 import 行に「標準ライブラリのみ対応しています」とエラーを表示する。`go.mod` の `require` も同様に警告する |
-| go.mod を使ったキャッシュキーの計算など、golangci-lint 内部の `go env` 呼び出し | 警告をログに出して処理を続ける | 検査結果に影響しないので、ログから除外して表示する |
+| `linters.default: all` | 上の非対応リンターも有効になる | `default: all` の行に、動かないリンターの一覧を案内として出す（`linters.disable` に入れると消える） |
+| 標準ライブラリ以外の import（サードパーティモジュール） | 対応しない（[1.5](#15-スコープの決定事項)）。プロセス内ドライバが import 位置付きのエラーを返し、`typecheck` として報告される | 結果一覧とエディタの該当 import 行に「package ... is not in std」と表示する |
+| golangci-lint 内部の `go env` 呼び出し（go.mod を使ったキャッシュキー計算など）、キャッシュのファイルロック | 警告・エラーをログに出して処理を続ける。検査結果には影響しない | ログから取り除いて表示する |
 
-- 非対応の一覧はバージョンごとの定義ファイル（`unsupported.json`）で管理し、UI の警告とテストで共有する
-- 将来、利用者の要望が多いものは、`go env` の結果を環境変数で渡すなどのパッチで個別に対応を検討する
+- 非対応の判定は `web/src/config/unsupported.ts` にまとめ、YAML エディタの警告（CodeMirror の lint）と単体テストで共有する
+- 設定ファイルは書き換えず、警告を出すだけにする（[1.4](#14-要件設定ファイル-yaml-の自由記述)）
 
 ## 5. セキュリティ・プライバシー
 
@@ -278,49 +286,52 @@ golangci-lint のバージョンごとに、以下のアセットを生成する
 
 | 脅威・論点 | 対策 |
 | --- | --- |
-| XSS（共有 URL に仕込まれた内容） | 共有 URL の内容は信頼しない。Issue メッセージ・ファイル名などはすべてテキストとしてレンダリングする（`innerHTML` 禁止）。CSP を設定する（`script-src 'self' 'wasm-unsafe-eval'`、`connect-src 'self' https://api.github.com`、`worker-src 'self'` など） |
+| XSS（共有 URL に仕込まれた内容） | 共有 URL の内容は信頼しない。Issue メッセージ・ファイル名などはすべてテキストとしてレンダリングする（`innerHTML` 禁止）。CSP を設定する（`script-src 'self' 'wasm-unsafe-eval'`、`connect-src 'self'`、`worker-src 'self'` など。開発サーバーと両立させるため、本番ビルドの HTML にだけ注入する。Phase 3 の Gist 連携で `connect-src` に `https://api.github.com` を足す） |
 | 重い共有 URL によるブラウザの占有 | 共有 URL は自動実行しない。検査は Worker で動くので UI は固まらず、`Cancel` で止められる |
 | サプライチェーン（ビルドに使うコード） | golangci-lint と依存は `go.sum` で固定し、CI でソースからビルドする。x/tools のパッチはリポジトリで管理しレビューする。フロントエンドの依存は lockfile で固定する |
-| 配信アセットの改ざん | 同一オリジンから配信し、HTTPS のみとする。`versions.json` に各アセットの SHA-256 を書き、Worker で検証する |
+| 配信アセットの改ざん | 同一オリジンから配信し、HTTPS のみとする。`versions.json` に各アセットの SHA-256 を書き、ダウンロード後にメインスレッドで検証する |
 | プライバシー | コードはサーバーに送られない。共有内容は URL フラグメントに入るので、ホスティング側のログにも残らない。アクセス解析を入れる場合は Cookie を使わないものにする |
 
-## 6. ディレクトリ構成（案）
+## 6. ディレクトリ構成
 
 ```
 .
-├── web/                       # フロントエンド（Vite + TypeScript + CodeMirror 6）
+├── wasm/                          # WASM 版 golangci-lint のビルドパイプライン
+│   ├── go.mod                     # golangci-lint のバージョンと Go ツールチェインを固定
+│   ├── build.sh                   # WASM・標準ライブラリのバンドル・メタデータ → dist/v/<version>/
+│   ├── xtools/
+│   │   ├── patches/               # golang.org/x/tools へのパッチ
+│   │   └── overlay/               # x/tools に追加するファイル（inproc_js.go, goenv_js.go）
+│   └── tools/mkbundle/            # 標準ライブラリのバンドル生成
+├── web/                           # Web アプリ（Vite + TypeScript + CodeMirror 6）
+│   ├── index.html
 │   ├── src/
-│   │   ├── ui/                # エディタ、設定パネル、結果パネル、共有
-│   │   ├── engine/            # Web Worker（PoC から移植）
-│   │   │   ├── worker.ts
-│   │   │   ├── gofs.ts        # メモリ上の fs
-│   │   │   ├── bundle.ts
-│   │   │   └── runner.ts      # golangci-lint の起動・結果の正規化
-│   │   └── sw.ts              # Service Worker
-│   └── examples/              # サンプルコード（txtar）
-├── wasm/                      # WASM 版 golangci-lint のビルドパイプライン
-│   ├── go.mod                 # golangci-lint のバージョンを固定
-│   ├── xtools/                # go/packages のパッチとプロセス内ドライバ
-│   ├── tools/mkbundle/        # 標準ライブラリのバンドル生成
-│   ├── scripts/               # キャッシュ生成、メタデータ生成
-│   └── build.sh
-├── testdata/                  # ゴールデンテスト（txtar + 設定 + 期待結果）
-├── e2e/                       # Playwright
-├── .github/workflows/         # ビルド・テスト・デプロイ・新バージョン検知
-├── poc/wasm/                  # PoC（本実装への移植後に削除）
-└── docs/
-    └── design.md
+│   │   ├── main.ts                # 画面の組み立て
+│   │   ├── engine/                # 検査エンジン（Web Worker、Node.js でも動く）
+│   │   ├── ui/                    # エディタ、結果一覧、位置の変換
+│   │   ├── config/unsupported.ts  # 非対応設定の検出
+│   │   ├── share.ts, txtar.ts, samples.ts
+│   │   └── sw.ts                  # Service Worker
+│   ├── scripts/                   # キャッシュ生成、versions.json、パリティテスト（Node.js）
+│   ├── test/                      # 単体テスト（Vitest）
+│   └── e2e/                       # E2E テスト（Playwright）
+├── scripts/build-assets.sh        # アセット一式のビルド
+├── testdata/parity/               # パリティテストのケース（txtar）
+├── .github/workflows/ci.yml       # テスト・GitHub Pages へのデプロイ
+└── docs/design.md
 ```
+
+`vite.config.ts` の `publicDir` が `wasm/dist` を指すので、ビルドしたアセットはそのまま Web アプリと一緒に配信される。
 
 ## 7. デプロイ構成
 
-- **ホスティング**: 静的ホスティング（Cloudflare Pages または GitHub Pages）。サーバーサイドの処理はない
-  - 1 ファイルのサイズ上限に注意する（Cloudflare Pages は 25MiB。`golangci-lint.wasm.gz` は約 15MB なので収まる）
-  - 帯域: 新規訪問者 1 人あたり約 24MB。GitHub Pages は月 100GB の目安があるため、利用が増えたら帯域無制限の Cloudflare Pages に移す
-- **キャッシュヘッダ**: `/v/{version}/*` は不変なので `Cache-Control: public, max-age=31536000, immutable`。`index.html` と `versions.json` は `no-cache`
-- **圧縮**: アセットは自前で gzip 済みのファイルとして配信し、Worker で展開する（ホスティング側の圧縮設定に依存しない）。それ以上のサイズ削減は行わない（[1.5](#15-スコープの決定事項)）
-- **Service Worker**: `/v/{version}/*` を Cache API に保存し、2 回目以降の訪問ではネットワークに取りに行かない。使わなくなったバージョンのキャッシュは削除する
-- **CI/CD**: GitHub Actions で、バージョンごとのアセットをビルド（matrix）→ テスト → デプロイする。アセットのビルドは数分かかるので、ビルド済みのバージョンは再ビルドしない
+- **ホスティング**: GitHub Pages（GitHub Actions からデプロイ）。サーバーサイドの処理はない
+  - `main` ブランチへの push で、CI（[9 章](#9-テスト戦略)）が通ったら `web/dist` をデプロイする（`.github/workflows/ci.yml`）。リポジトリの Settings → Pages で Source を「GitHub Actions」にする
+  - Vite の `base` を `./` にしているので、`https://<user>.github.io/<repo>/` のようなサブパスでも動く
+  - 帯域: 新規訪問者 1 人あたり約 25MB。GitHub Pages は月 100GB の目安があるため、利用が増えたら帯域の制限がない静的ホスティング（Cloudflare Pages など。1 ファイル 25MiB の上限内に収まる）に移す
+- **キャッシュ**: `/v/{version}/*` は不変だが、GitHub Pages ではキャッシュヘッダを指定できない。そのため Service Worker（`sw.ts`）が `/v/` 以下を Cache API に保存し、2 回目以降の訪問ではネットワークに取りに行かない。`versions.json` と画面は通常どおりネットワークから取る
+- **圧縮**: アセットは自前で gzip 済みのファイル（`.bin`）として配信し、メインスレッドで展開する。ホスティング側の圧縮設定に依存しない。それ以上のサイズ削減は行わない（[1.5](#15-スコープの決定事項)）
+- **CI のキャッシュ**: アセットのビルドは数分かかるので、ビルドに関わるファイルのハッシュをキーに `actions/cache` で保存する
 
 ## 8. 可観測性
 
@@ -331,35 +342,35 @@ golangci-lint のバージョンごとに、以下のアセットを生成する
 
 ## 9. テスト戦略
 
-| 種類 | 内容 |
-| --- | --- |
-| MemFS の互換テスト | 同じテストを `node:fs` と MemFS の両方に対して実行し、挙動（エラーコード・位置管理・`O_APPEND` など）が一致することを確認する |
-| プロセス内ドライバ | 標準ライブラリだけの import、ローカルパッケージ、`vendor/` 経由の標準ライブラリ、cgo・サードパーティ import のエラーを Go のテストで確認する |
-| ネイティブとの一致テスト | `testdata/` の入力（txtar + 設定）を、同じバージョンのネイティブ版と WASM 版（Node 上で実行）の両方で検査し、Issue が一致することを確認する。WASM 化による差異を検出する |
-| 結果の正規化 | `typecheck` の位置補正、`SuggestedFixes` のデコード、txtar の変換 |
-| 非対応機能 | `unsupported.json` に載っている設定で警告が出ること、載っていない設定で警告が出ないこと |
-| E2E | Playwright（Chromium のみ。対応ブラウザは Google Chrome、[1.5](#15-スコープの決定事項)）でエディタ入力 → Run → マーカー表示 → Share → 共有 URL 再現、キャンセル、バージョン切り替え、2 回目の訪問で Service Worker から読むこと |
-| CI | GitHub Actions で上記を実行。アセットのビルドは golangci-lint のバージョンごとにキャッシュする |
+| 種類 | 内容 | 実行 |
+| --- | --- | --- |
+| MemFS の互換テスト | 同じ操作を MemFS と `node:fs`（一時ディレクトリ）の両方に実行し、結果とエラーコード（`ENOENT`・`EEXIST`・`EISDIR`・`ENOTDIR`・`ENOTEMPTY`・`EBADF` など）が一致することを確認する | `npm test`（`web/test/gofs.test.ts`） |
+| 単体テスト | 結果の正規化（`typecheck` の位置補正、`SuggestedFixes` のデコード、ログの整理）、txtar、共有 URL の往復、UTF-8 の列位置の変換、非対応設定の検出 | `npm test` |
+| ネイティブとの一致テスト | `testdata/parity/*.txtar` を、同じバージョンのネイティブ版と WASM 版（Node.js 上）で検査し、Issue（自動修正の内容を含む）が完全に一致することを確認する。標準設定、全リンター＋全フォーマッタ、型エラー、複数パッケージ、フォーマッタ、設定の自由記述、nolint、gci の localmodule の 8 ケース | `npm run parity` |
+| E2E | Playwright（Chromium）で、サンプルの検査とエディタのマーカー、Issue クリックでの移動、自由記述した設定（`output.*` を含む）の反映、非対応設定の警告、標準ライブラリ以外の import のエラー位置、txtar の別ファイルへの位置対応、不正な設定のエラー表示、共有 URL（自動実行しないこと）、キャンセル、Service Worker のキャッシュの 9 シナリオ | `npm run e2e` |
+| CI | GitHub Actions で、型チェック → 単体テスト → パリティテスト → ビルド → E2E を実行する | `.github/workflows/ci.yml` |
+
+プロセス内ドライバ（Go）の単体テストはまだない。挙動はパリティテスト（複数パッケージ・型エラー）と E2E（標準ライブラリ以外の import）で確認している。
 
 ## 10. 実装フェーズ
 
 ### Phase 0: PoC（完了）
 
-- js/wasm ビルドとプロセス内ドライバ、標準ライブラリのバンドル、キャッシュの事前生成、メモリ上の fs、Web Worker、素のテキストエリアの UI、E2E（[`poc/wasm/`](../poc/wasm/README.md)）
+- js/wasm ビルドとプロセス内ドライバ、標準ライブラリのバンドル、キャッシュの事前生成、メモリ上の fs、Web Worker、素のテキストエリアの UI、E2E（PoC（git 履歴のコミット `bf8c696` 時点の `poc/wasm/`））
 
-### Phase 1: MVP
+### Phase 1: MVP（完了）
 
-- PoC の検査エンジンを TypeScript に移植（`web/src/engine/`）、ビルドパイプラインを `wasm/` に移す
-- golangci-lint の公式リリースと同じ Go のバージョンでビルドする
-- CodeMirror 6 エディタ、エディタ内マーカー、結果一覧
-- 単一ファイル + 自動生成 `go.mod`、標準ライブラリのみ（標準ライブラリ以外の import はエラー表示）
+- 検査エンジンを TypeScript に移植（`web/src/engine/`）、ビルドパイプラインを `wasm/` に移した
+- golangci-lint の公式リリースと同じ Go（go1.25.1）でビルド
+- CodeMirror 6 エディタ（ライト・ダーク両対応）、エディタ内マーカー、結果一覧（クリックで該当箇所へ移動）
+- 単一ファイル + 自動生成 `go.mod`。txtar による複数ファイルも 1 つのエディタで扱える（タブ表示は Phase 2）
 - 設定 YAML の自由記述（書き換えずにそのまま渡す）。空ならデフォルト設定（`standard`）で実行
-- 非対応機能の洗い出し（[4.6](#46-ブラウザ内で動かない機能の扱い)）と警告表示
-- キャンセル、ダウンロード進捗の表示
-- URL フラグメント方式の共有
+- 非対応機能の洗い出しと警告表示（[4.6](#46-ブラウザ内で動かない機能の扱い)）。その過程で `goimports` が検査全体を止める問題を見つけ、x/tools のパッチで解消した
+- キャンセル、ダウンロード進捗の表示、アセットのチェックサム検証
+- URL フラグメント方式の共有（共有 URL は自動実行しない）
 - Service Worker によるアセットのキャッシュ
-- 最新版 1 バージョンのみ
-- 静的ホスティングへのデプロイと CI（ビルド・ネイティブとの一致テスト・Chromium の E2E）
+- Google Chrome 以外での案内表示
+- CI（型チェック・単体テスト・パリティテスト・E2E）と GitHub Pages へのデプロイのワークフロー（GitHub 上での実行は未確認）
 
 ### Phase 2: 設定の充実
 
@@ -384,7 +395,6 @@ golangci-lint のバージョンごとに、以下のアセットを生成する
 
 サードパーティモジュール・対応ブラウザ・ダウンロードサイズは [1.5](#15-スコープの決定事項) で決着済み。残る論点は以下。
 
-- **非対応機能の範囲**: [4.6](#46-ブラウザ内で動かない機能の扱い) の「要検証」の項目を確定させる
 - **重いリンター構成**: `--default=all` ではキャッシュありでも約 7 秒かかる（Node での計測）。待ち時間の見せ方と、どこまでを許容範囲とするか
 - **Go バージョンの選択**: golangci-lint のバージョンとは別に、解析対象の Go バージョン（`go.mod` の `go` 行）を選べるようにするか。標準ライブラリのバンドルが Go のバージョンごとに必要になるため、当面は「golangci-lint バージョンごとに 1 つの Go」で固定する
 - **i18n**: UI 文言の日英対応
@@ -446,7 +456,7 @@ golangci-lint のバージョンごとに、以下のアセットを生成する
 
 ### A.5 ブラウザでの検証結果
 
-[`poc/wasm/`](../poc/wasm/README.md) で、ブラウザ内だけで動く PoC を作り、ヘッドレス Chromium（Playwright）で E2E テストを行った。
+git 履歴のコミット `bf8c696` 時点の `poc/wasm/` に、ブラウザ内だけで動く PoC を作り、ヘッドレス Chromium（Playwright）で E2E テストを行った。
 
 実装したもの:
 
