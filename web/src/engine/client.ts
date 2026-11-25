@@ -1,7 +1,7 @@
 // Main-thread side of the engine: downloads and verifies the assets of a
 // golangci-lint version, compiles the WebAssembly module, and drives the worker.
 
-import type { Files, FromWorker, LintResult, ToWorker } from './protocol';
+import type { Files, FormatResult, FromWorker, LintResult, ToWorker } from './protocol';
 
 export interface AssetInfo {
   size: number;
@@ -73,7 +73,7 @@ export class Engine {
   private init: Extract<ToWorker, { type: 'init' }> | null = null;
   private ready: Promise<void> | null = null;
   private nextId = 1;
-  private pending = new Map<number, { resolve: (r: LintResult) => void; reject: (e: Error) => void }>();
+  private pending = new Map<number, { resolve: (r: never) => void; reject: (e: Error) => void }>();
 
   constructor(
     private readonly base: URL,
@@ -118,9 +118,9 @@ export class Engine {
         const msg = e.data;
         if (msg.type === 'ready') {
           resolve();
-        } else if (msg.type === 'result') {
+        } else if (msg.type === 'result' || msg.type === 'formatted') {
           const { type: _type, id, ...result } = msg;
-          this.pending.get(id)?.resolve(result);
+          this.pending.get(id)?.resolve(result as never);
           this.pending.delete(id);
         } else if (msg.type === 'error') {
           if (msg.id === undefined) {
@@ -138,13 +138,23 @@ export class Engine {
     return this.ready;
   }
 
+  private request<T>(type: 'lint' | 'format', files: Files): Promise<T> {
+    const id = this.nextId++;
+    return new Promise<T>((resolve, reject) => {
+      this.pending.set(id, { resolve: resolve as (r: never) => void, reject });
+      this.worker!.postMessage({ type, id, files } satisfies ToWorker);
+    });
+  }
+
   async lint(files: Files): Promise<LintResult> {
     await this.ready;
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.worker!.postMessage({ type: 'lint', id, files } satisfies ToWorker);
-    });
+    return this.request<LintResult>('lint', files);
+  }
+
+  /** Formats the Go files with goimports (see FORMAT_ARGS). */
+  async format(files: Files): Promise<FormatResult> {
+    await this.ready;
+    return this.request<FormatResult>('format', files);
   }
 
   /** Stops the running lint (if any) by replacing the worker. The analysis cache built so far is lost. */

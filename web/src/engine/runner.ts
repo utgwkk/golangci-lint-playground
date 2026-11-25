@@ -31,6 +31,13 @@ export const LINT_ARGS = [
 ];
 
 /**
+ * Formats with goimports only (also adds missing and removes unused imports).
+ * The user's configuration is not read, so that the result does not depend on
+ * other formatters enabled there. Without paths, fmt walks the working directory.
+ */
+export const FORMAT_ARGS = ['fmt', '--no-config', '-E', 'goimports'];
+
+/**
  * Installs memfs as globalThis.fs and makes process.cwd follow memfs.
  * Must be called before wasm_exec.js is loaded and before running Go.
  */
@@ -129,4 +136,14 @@ export function writeWorkspace(memfs: MemFS, files: Files, goVersion: string): v
     if (!isValidFileName(name)) throw new Error(`invalid file name: ${name}`);
     memfs.writeFile(`${PATHS.work}/${name}`, content);
   }
+}
+
+/** Reads files back from the workspace (e.g. after formatting). Missing files are skipped. */
+export function readWorkspace(memfs: MemFS, names: string[]): Files {
+  const out: Files = {};
+  for (const name of names) {
+    const path = `${PATHS.work}/${name}`;
+    if (memfs.exists(path)) out[name] = new TextDecoder().decode(memfs.readFile(path));
+  }
+  return out;
 }

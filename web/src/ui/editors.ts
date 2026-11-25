@@ -47,7 +47,7 @@ const theme = EditorView.theme({
   '.cm-panels': { backgroundColor: 'var(--panel)', color: 'var(--fg)' },
 });
 
-function common(onRun: () => void): Extension[] {
+function common(onRun: () => void, extraKeys: { key: string; run: () => void }[] = []): Extension[] {
   return [
     basicSetup,
     syntaxHighlighting(highlight),
@@ -63,6 +63,13 @@ function common(onRun: () => void): Extension[] {
             return true;
           },
         },
+        ...extraKeys.map(({ key, run }) => ({
+          key,
+          run: () => {
+            run();
+            return true;
+          },
+        })),
       ]),
     ),
   ];
@@ -72,9 +79,15 @@ function common(onRun: () => void): Extension[] {
  * The Go editor. Each file has its own EditorState (made by createState with
  * the same extensions); the view shows the active file.
  */
-export function createGoEditor(parent: HTMLElement, onRun: () => void, onChange: () => void): { view: EditorView; createState: (doc: string) => EditorState } {
+export function createGoEditor(
+  parent: HTMLElement,
+  onRun: () => void,
+  onChange: () => void,
+  onFormat: () => void,
+): { view: EditorView; createState: (doc: string) => EditorState } {
   const extensions = [
-    common(onRun),
+    // Shift+Alt+F formats, as in VS Code.
+    common(onRun, [{ key: 'Shift-Alt-f', run: onFormat }]),
     go(),
     indentUnit.of('\t'),
     EditorState.tabSize.of(4),

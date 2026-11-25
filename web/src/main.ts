@@ -20,6 +20,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const ui = {
   version: $<HTMLSelectElement>('version'),
   run: $<HTMLButtonElement>('run'),
+  format: $<HTMLButtonElement>('format'),
   cancel: $<HTMLButtonElement>('cancel'),
   share: $<HTMLButtonElement>('share'),
   progress: $<HTMLProgressElement>('progress'),
@@ -45,6 +46,7 @@ function setState(s: State): void {
   state = s;
   document.body.dataset.state = s;
   ui.run.disabled = s !== 'ready';
+  ui.format.disabled = s !== 'ready';
   ui.cancel.hidden = s !== 'running';
   ui.version.disabled = s === 'running' || !manifest || manifest.versions.length < 2;
 }
@@ -84,7 +86,7 @@ function saveDraft(): void {
 // ---- editors ----
 
 const draft = loadDraft();
-const goEditor = createGoEditor($('code'), () => void run(), saveDraft);
+const goEditor = createGoEditor($('code'), () => void run(), saveDraft, () => void format());
 const tabs = new FileTabs({ view: goEditor.view, container: $('tabs'), createState: goEditor.createState, onChange: saveDraft });
 tabs.load(draft?.code ?? DEFAULT_CODE);
 const configEditor: EditorView = createConfigEditor($('config'), draft?.config ?? DEFAULT_CONFIG, () => void run(), saveDraft);
@@ -188,6 +190,43 @@ async function run(): Promise<void> {
     }
   } finally {
     clearInterval(timer);
+  }
+}
+
+/** Formats all Go files with goimports (which also adds missing imports). */
+async function format(): Promise<void> {
+  if (state !== 'ready' || !engine) return;
+  setState('running');
+  status('goimports で整形中…');
+  delete document.body.dataset.lastFormat;
+  try {
+    const result = await engine.format(tabs.contents());
+    const changed = Object.entries(result.files)
+      .filter(([name, content]) => tabs.replaceContent(name, content))
+      .map(([name]) => name);
+    // goimports leaves files it cannot parse unchanged and logs
+    // `(goimports) formatting file NAME: ...`.
+    const failed = [...new Set([...result.log.matchAll(/formatting file (\S+?):/g)].map((m) => m[1]))];
+    if (failed.length) {
+      status(`構文エラーのため整形できなかったファイルがあります: ${failed.join(', ')}`);
+      ui.log.textContent = result.log;
+      ui.logDetails.hidden = false;
+    } else if (changed.length) {
+      status(`goimports で整形しました（${changed.join(', ')}）`);
+    } else {
+      status('goimports で整形しました（変更はありません）');
+    }
+    document.body.dataset.lastFormat = failed.length ? 'failed' : 'ok';
+    setState('ready');
+  } catch (err) {
+    if (err instanceof CancelledError) {
+      status('キャンセルしました');
+      // engine.cancel() restarts the worker and sets the state back to ready.
+    } else {
+      status(`整形に失敗しました: ${(err as Error).message ?? err}`);
+      document.body.dataset.lastFormat = 'error';
+      setState('ready');
+    }
   }
 }
 
@@ -301,6 +340,7 @@ async function main(): Promise<void> {
 }
 
 ui.run.addEventListener('click', () => void run());
+ui.format.addEventListener('click', () => void format());
 ui.cancel.addEventListener('click', () => void cancel());
 ui.share.addEventListener('click', () => void share());
 ui.resetConfig.addEventListener('click', () => setText(configEditor, DEFAULT_CONFIG));
