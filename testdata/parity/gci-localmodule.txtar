@@ -1,0 +1,27 @@
+gci with the localmodule section, which needs the module path.
+-- go.mod --
+module example.com/app
+
+go 1.25
+-- main.go --
+package main
+
+import (
+	"example.com/app/util"
+	"fmt"
+)
+
+func main() { fmt.Println(util.X) }
+-- util/util.go --
+package util
+
+const X = 1
+-- .golangci.yml --
+version: "2"
+linters:
+  default: none
+formatters:
+  enable: [gci]
+  settings:
+    gci:
+      sections: [standard, default, localmodule]

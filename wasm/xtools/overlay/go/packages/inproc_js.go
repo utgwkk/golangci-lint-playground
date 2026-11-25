@@ -1,6 +1,6 @@
 //go:build js && wasm
 
-// This file is copied into golang.org/x/tools/go/packages by poc/wasm/build.sh.
+// This file is copied into golang.org/x/tools/go/packages by wasm/build.sh.
 //
 // It provides an in-process replacement for the `go list` driver, because
 // js/wasm cannot start subprocesses. It supports a single main module whose
@@ -124,20 +124,29 @@ func inprocListDriver(cfg *Config, patterns ...string) (*DriverResponse, error) 
 		}
 		byID[id] = p
 		resp.Packages = append(resp.Packages, p)
+		// importPos returns the position of the first import of path, so that
+		// errors are reported at the import declaration.
+		importPos := func(path string) string {
+			if ps := bp.ImportPos[path]; len(ps) > 0 {
+				return fmt.Sprintf("%s:%d:%d", ps[0].Filename, ps[0].Line, ps[0].Column)
+			}
+			return ""
+		}
 		for _, path := range bp.Imports {
 			switch {
 			case path == "C":
-				p.Errors = append(p.Errors, Error{Msg: "cgo is not supported in the playground", Kind: ListError})
+				p.Errors = append(p.Errors, Error{Pos: importPos(path), Msg: "cgo is not supported in the playground", Kind: ListError})
 			case path == mod.Path || strings.HasPrefix(path, mod.Path+"/"):
 				dep, err := addLocal(filepath.Join(mod.Dir, filepath.FromSlash(strings.TrimPrefix(path[len(mod.Path):], "/"))))
 				if err != nil {
-					p.Errors = append(p.Errors, Error{Msg: err.Error(), Kind: ListError})
+					p.Errors = append(p.Errors, Error{Pos: importPos(path), Msg: err.Error(), Kind: ListError})
 					continue
 				}
 				p.Imports[path] = &Package{ID: dep.ID}
 			default:
 				if _, ok := std[path]; !ok {
 					p.Errors = append(p.Errors, Error{
+						Pos:  importPos(path),
 						Msg:  fmt.Sprintf("package %s is not in std (only the standard library is available in the playground)", path),
 						Kind: ListError,
 					})

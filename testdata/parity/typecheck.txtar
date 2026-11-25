@@ -1,0 +1,10 @@
+Type errors and imports outside the standard library.
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	x := 1
+	fmt.Println(y)
+}

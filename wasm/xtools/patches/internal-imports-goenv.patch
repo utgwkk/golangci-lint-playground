@@ -1,0 +1,27 @@
+--- a/internal/imports/fix.go
++++ b/internal/imports/fix.go
+@@ -974,6 +974,11 @@
+ 	return copy
+ }
+ 
++// inprocGoEnv, if set, provides the values of requiredGoEnvVars instead of
++// running `go env`. It is set on js/wasm, where the go command cannot be run
++// (see goenv_js.go).
++var inprocGoEnv func() map[string]string
++
+ func (e *ProcessEnv) init() error {
+ 	if e.initialized {
+ 		return nil
+@@ -995,6 +1000,12 @@
+ 		e.Env = map[string]string{}
+ 	}
+ 
++	if inprocGoEnv != nil {
++		maps.Copy(e.Env, inprocGoEnv())
++		e.initialized = true
++		return nil
++	}
++
+ 	goEnv := map[string]string{}
+ 	stdout, err := e.invokeGo(context.TODO(), "env", append([]string{"-json"}, requiredGoEnvVars...)...)
+ 	if err != nil {

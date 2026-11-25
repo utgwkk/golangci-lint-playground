@@ -1,0 +1,55 @@
+Every linter and formatter that works in the browser.
+-- main.go --
+package main
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+)
+
+var globalCounter = 0
+
+type Config struct {
+	Name    string
+	Timeout time.Duration
+}
+
+func process(items []string, cfg *Config) (string, error) {
+	var result string
+	for i := 0; i < len(items); i++ {
+		if items[i] == "" {
+			return "", errors.New("empty item")
+		}
+		result = result + strings.ToUpper(items[i])
+	}
+	if cfg.Timeout > 5*time.Second {
+		fmt.Println("long timeout")
+	}
+	globalCounter++
+	return result, nil
+}
+
+func main() {
+	out, err := process(os.Args[1:], &Config{Name: "x"})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(out)
+}
+-- .golangci.yml --
+version: "2"
+linters:
+  default: all
+  disable:
+    - gomoddirectives
+    - gomodguard
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
