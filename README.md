@@ -58,6 +58,8 @@ cd web && npm run parity
 cd web && npm run build && npm run e2e
 ```
 
+The screenshot above is taken with `cd web && npm run build && npm run screenshot` (see the [update-readme-screenshot](.claude/skills/update-readme-screenshot/SKILL.md) skill, which Claude Code also uses).
+
 | Directory | Contents |
 | --- | --- |
 | `wasm/` | Pipeline that builds golangci-lint for js/wasm (patches to `golang.org/x/tools`, standard library bundle) |
