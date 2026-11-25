@@ -134,13 +134,18 @@ golangci-lint のネイティブ版（v2.5.0・v2.15.0）と、js/wasm 版の Po
   - UI フレームワークは小さく保つ（Preact もしくは素の TS）
 - **画面構成**
   - ヘッダ: `Run`（Ctrl/Cmd+Enter）、`Cancel`（実行中のみ）、`Format`、`Fix`、`Share`、バージョン選択、サンプル選択
-  - 左: Go コードエディタ（ファイルタブ。`+` で `go.mod` や追加ファイルを作成）
+  - 左: Go コードエディタ（ファイルタブ。`+` で `go.mod` や追加ファイルを作成、ダブルクリックで名前を変更、`×` で削除。タブには指摘の件数を出す）。ファイルごとに CodeMirror の `EditorState` を持つので、元に戻す履歴やマーカーはファイルごとに保たれる（`ui/files.ts`）
   - 右上: 設定パネル（[1.4](#14-要件設定ファイル-yaml-の自由記述) の要件に対応）
-    - **YAML エディタ（正本）**: `.golangci.yml` を自由記述する。`@codemirror/lang-yaml` によるハイライト、バージョンごとの JSON Schema を使ったキー補完・ホバー説明・型チェック。Schema に反する記述は警告として表示するだけで、実行は止めない（最終的な判断は golangci-lint に任せる）
-    - **GUI（補助）**: リンター一覧（`linters.json` から生成。検索・グループ・`fast` / `autoFix` バッジ・説明・元リポジトリへのリンク）をチェックボックスで選ぶと、YAML の `linters.enable` / `linters.disable` / `linters.default` だけを書き換える。YAML 側の変更は GUI に即時反映する
-    - YAML の部分書き換えには、コメントや順序を保持できる YAML ライブラリ（`yaml` パッケージの Document API など）を使う
+    - **YAML エディタ（正本）**: `.golangci.yml` を自由記述する。`@codemirror/lang-yaml` によるハイライトに加えて、バージョンごとの JSON Schema（`schema.json`）を使った支援をする（`web/src/config/`）
+      - **キー・値の補完**: カーソル位置の YAML のパス（`linters.settings.govet` など）を、入力途中で壊れた YAML でも扱えるようにインデントから求め（`yamlpath.ts`）、そこで書けるキーや値（列挙値・真偽値・リンター名など）を候補に出す。値がオブジェクトのキーは改行して一段下げ、配列のキーは `- ` まで入れる
+      - **ホバー**: キーにはスキーマの説明を、リンター名・フォーマッタ名には `linters.json` / `formatters.json` の説明を出す
+      - **警告**: スキーマに反する記述（不明なキー、型・列挙値・パターンの違反など）を、「もしかして: …」の候補付きで警告する。警告だけで実行は止めない（最終的な判断は golangci-lint に任せる）
+      - スキーマの検証は自前の小さなインタプリタ（`schema.ts`）で行う。ajv などのコードを生成する検証器は CSP（`unsafe-eval` を許可していない）の下では動かないため。golangci-lint のスキーマが使うキーワード（`$ref`・`properties`・`patternProperties`・`additionalProperties`・`items`・`enum`・`anyOf`・`required`・`pattern`・`minimum`・`uniqueItems` など）だけを実装している
+      - スキーマのリンター名（`linter-names`）は、カスタムリンターのために「既知の名前の列挙または任意の文字列」になっていて、打ち間違いを検出できない。playground ではプラグインを読み込めず、不明な名前は実行時に必ずエラーになるので、`linters.enable` / `linters.disable` / 除外ルールの `linters` に書かれた名前はリンター一覧と照らし合わせて警告する
+    - **GUI（補助）**: 「リンターを選ぶ」ダイアログ（`ui/toolspanel.ts`）。リンターとフォーマッタの一覧（`linters.json` / `formatters.json` から生成。検索・有効なものだけ表示・`standard` / `fast` / `autofix` / `deprecated` / ブラウザ非対応のバッジ・説明・元リポジトリへのリンク）と `linters.default` の選択がある。操作すると、YAML の `linters.enable` / `linters.disable` / `linters.default` / `formatters.enable` だけを書き換える。ダイアログを開くたびに YAML から状態を読み直す
+    - YAML の部分書き換えは、構文木から該当箇所の位置を求めてテキストを最小限に差し替える（`yamledit.ts`）。YAML ライブラリでドキュメント全体を書き戻すと、引用符・インデント・空行などがユーザーの書き方から変わってしまうため。ブロック形式とフロー形式の配列、キーの新規作成（親を含む）、空になった配列と親の削除に対応する
     - 非対応の設定（[4.6](#46-ブラウザ内で動かない機能の扱い)）や設定エラーは、YAML エディタの該当行にマーカーで表示する
-    - 「デフォルト設定に戻す」「サンプル設定を挿入」ボタンを用意する
+    - 「デフォルトに戻す」ボタンを用意する
   - 右下 / 下部: 結果パネル
     - Issue 一覧（リンター名・メッセージ・位置）。クリックで該当行へジャンプ
     - エディタ内に波線マーカー、ホバーでメッセージ、`SuggestedFixes` があれば Quick Fix ボタン
@@ -148,7 +153,8 @@ golangci-lint のネイティブ版（v2.5.0・v2.15.0）と、js/wasm 版の Po
 - **初回ロードの表示**: 約 24MB のダウンロード中は進捗（MB / 全体）を表示する。ダウンロード中もエディタは使える。2 回目以降の訪問では Service Worker のキャッシュから読むので待ち時間はほぼない
 - **対象外ブラウザでの案内**: Google Chrome 以外のブラウザでは「Google Chrome で動作確認しています」と案内を出す（[1.5](#15-スコープの決定事項)）。実行は止めない
 - **状態の永続化**: 編集中の内容は `localStorage` に自動保存（try/catch でラップ）
-- **複数ファイルの表現**: Go Playground と同じ [txtar](https://pkg.go.dev/golang.org/x/tools/txtar) 形式を内部表現・共有形式に採用する
+- **サンプル集**: ツールバーから選ぶ。`web/examples/*.txtar` に、1 行目をタイトル、続く行を説明、`.golangci.yml` を設定として置く（基本、リンターの設定と除外、フォーマッタ、複数パッケージ、nolint、modernize、スタイル）。編集中の内容を置き換えるときは確認する。サンプルはパリティテストの対象にも含め、ネイティブ版と同じ指摘を出すことを保証する
+- **複数ファイルの表現**: Go Playground と同じ [txtar](https://pkg.go.dev/golang.org/x/tools/txtar) 形式を、共有 URL と下書きの保存形式に使う（main.go だけなら txtar にせずそのまま。Phase 1 の共有 URL もそのまま開ける）。エディタ上はタブで表示する
 
   ```
   -- go.mod --
@@ -310,10 +316,11 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 │   ├── src/
 │   │   ├── main.ts                # 画面の組み立て
 │   │   ├── engine/                # 検査エンジン（Web Worker、Node.js でも動く）
-│   │   ├── ui/                    # エディタ、結果一覧、位置の変換
-│   │   ├── config/unsupported.ts  # 非対応設定の検出
+│   │   ├── ui/                    # エディタ、ファイルタブ、リンター選択ダイアログ、結果一覧、位置の変換
+│   │   ├── config/                # 設定の支援: スキーマ（補完・ホバー・警告）、YAML の部分書き換え、非対応設定の検出
 │   │   ├── share.ts, txtar.ts, samples.ts
 │   │   └── sw.ts                  # Service Worker
+│   ├── examples/                  # サンプル集（txtar）
 │   ├── scripts/                   # キャッシュ生成、versions.json、パリティテスト（Node.js）
 │   ├── test/                      # 単体テスト（Vitest）
 │   └── e2e/                       # E2E テスト（Playwright）
@@ -359,9 +366,9 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 | 種類 | 内容 | 実行 |
 | --- | --- | --- |
 | MemFS の互換テスト | 同じ操作を MemFS と `node:fs`（一時ディレクトリ）の両方に実行し、結果とエラーコード（`ENOENT`・`EEXIST`・`EISDIR`・`ENOTDIR`・`ENOTEMPTY`・`EBADF` など）が一致することを確認する | `npm test`（`web/test/gofs.test.ts`） |
-| 単体テスト | 結果の正規化（`typecheck` の位置補正、`SuggestedFixes` のデコード、ログの整理）、txtar、共有 URL の往復、UTF-8 の列位置の変換、非対応設定の検出 | `npm test` |
-| ネイティブとの一致テスト | `testdata/parity/*.txtar` を、同じバージョンのネイティブ版と WASM 版（Node.js 上）で検査し、Issue（自動修正の内容を含む）が完全に一致することを確認する。標準設定、全リンター＋全フォーマッタ、型エラー、複数パッケージ、フォーマッタ、設定の自由記述、nolint、gci の localmodule の 8 ケース | `npm run parity` |
-| E2E | Playwright（Chromium）で、サンプルの検査とエディタのマーカー、Issue クリックでの移動、自由記述した設定（`output.*` を含む）の反映、非対応設定の警告、標準ライブラリ以外の import のエラー位置、txtar の別ファイルへの位置対応、不正な設定のエラー表示、共有 URL（自動実行しないこと）、キャンセル、Service Worker のキャッシュの 9 シナリオ | `npm run e2e` |
+| 単体テスト | 結果の正規化（`typecheck` の位置補正、`SuggestedFixes` のデコード、ログの整理）、txtar、共有 URL の往復、UTF-8 の列位置の変換、非対応設定の検出、スキーマのたどり方と検証（テスト用の小さなスキーマで）、カーソル位置の YAML パスの判定、YAML の部分書き換え（コメント・書式が保たれること）、リンターの有効/無効の判定と切り替え | `npm test` |
+| ネイティブとの一致テスト | `testdata/parity/*.txtar` と `web/examples/*.txtar`（サンプル集）を、同じバージョンのネイティブ版と WASM 版（Node.js 上）で検査し、Issue（自動修正の内容を含む）が完全に一致することを確認する。標準設定、全リンター＋全フォーマッタ、型エラー、複数パッケージ、フォーマッタ、設定の自由記述、nolint、gci の localmodule の 8 ケースと、サンプル 7 つ | `npm run parity` |
+| E2E | Playwright（Chromium）で、サンプルの検査とエディタのマーカー、Issue クリックでの移動、自由記述した設定（`output.*` を含む）の反映、非対応設定の警告、標準ライブラリ以外の import のエラー位置、ファイルタブ（追加・名前の変更・削除、別ファイルの指摘への移動）、不正な設定のエラー表示、共有 URL（複数ファイル、自動実行しないこと）、キャンセル、Service Worker のキャッシュ、リンター選択ダイアログ（YAML の部分書き換え）、スキーマによる補完・警告・ホバー、サンプル集の 12 シナリオ | `npm run e2e` |
 | CI | GitHub Actions で、型チェック・単体テスト・アセットのビルドを並列に、アセットができたらパリティテストと E2E を並列に実行する（[7 章](#7-デプロイ構成)） | `.github/workflows/ci.yml` |
 
 プロセス内ドライバ（Go）の単体テストはまだない。挙動はパリティテスト（複数パッケージ・型エラー）と E2E（標準ライブラリ以外の import）で確認している。
@@ -377,7 +384,7 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 - 検査エンジンを TypeScript に移植（`web/src/engine/`）、ビルドパイプラインを `wasm/` に移した
 - Go の最新の安定版でビルド。当初は golangci-lint v2.5.0 の公式リリースと同じ go1.25.1 だったが、2026-11-25 に go1.27.4 へ変更し、Go 1.27 に対応した golangci-lint v2.15.0 に上げた
 - CodeMirror 6 エディタ（ライト・ダーク両対応）、エディタ内マーカー、結果一覧（クリックで該当箇所へ移動）
-- 単一ファイル + 自動生成 `go.mod`。txtar による複数ファイルも 1 つのエディタで扱える（タブ表示は Phase 2）
+- 単一ファイル + 自動生成 `go.mod`。txtar による複数ファイルも 1 つのエディタで扱える（Phase 2 でタブ表示に置き換えた）
 - 設定 YAML の自由記述（書き換えずにそのまま渡す）。空ならデフォルト設定（`standard`）で実行
 - 非対応機能の洗い出しと警告表示（[4.6](#46-ブラウザ内で動かない機能の扱い)）。その過程で `goimports` が検査全体を止める問題を見つけ、x/tools のパッチで解消した
 - キャンセル、ダウンロード進捗の表示、アセットのチェックサム検証
@@ -386,12 +393,12 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 - Google Chrome 以外での案内表示
 - CI（型チェック・単体テスト・パリティテスト・E2E）と GitHub Pages へのデプロイのワークフロー（GitHub 上での実行は未確認）
 
-### Phase 2: 設定の充実
+### Phase 2: 設定の充実（完了）
 
-- YAML エディタの強化（JSON Schema による補完・ホバー説明・警告）
-- リンター選択 GUI（コメントと順序を保ったまま YAML の一部だけを書き換える）
-- 複数ファイル（txtar）のタブ表示
-- サンプル集
+- YAML エディタの強化: JSON Schema による補完・ホバー説明・警告（CSP の下で動く自前の検証器）。不明なリンター名の警告
+- リンター選択 GUI: コメントと順序を保ったまま YAML の一部だけを書き換える
+- 複数ファイルのタブ表示（txtar は共有・保存形式として残す）
+- サンプル集（7 つ。パリティテストの対象にも含めた）
 
 ### Phase 3: 機能拡張
 

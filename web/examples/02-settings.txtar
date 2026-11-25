@@ -1,0 +1,42 @@
+リンターの設定と除外ルール
+linters.settings で個々のリンターを調整し、linters.exclusions で特定の指摘を除外します。
+-- main.go --
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func handle(v any) {
+	s := v.(string)
+	fmt.Println(s)
+}
+
+func main() {
+	os.Setenv("MODE", "debug")
+	handle("x")
+	if len(os.Args) > 1 {
+		fmt.Println("args")
+	} else {
+		fmt.Println("no args")
+	}
+}
+-- .golangci.yml --
+version: "2"
+linters:
+  enable:
+    - gocritic
+    - forcetypeassert
+  settings:
+    errcheck:
+      # 型アサーションの ok を確かめていないことも指摘する
+      check-type-assertions: true
+    gocritic:
+      enabled-tags: [diagnostic, style]
+  exclusions:
+    rules:
+      # main.go では if-else の連鎖を許す
+      - path: main\.go
+        linters: [gocritic]
+        text: ifElseChain

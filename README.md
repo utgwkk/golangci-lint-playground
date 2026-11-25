@@ -8,7 +8,9 @@
 
 - golangci-lint v2.15.0（Go 1.27.4 でビルド）による検査。結果はネイティブ版と同じです（`testdata/parity/` で確認しています）
 - `.golangci.yml` の自由記述。書いた内容は書き換えずにそのまま使われます
-- 複数ファイル（`-- name.go --` で区切る txtar 形式）、同じモジュール内のパッケージ
+- `.golangci.yml` の補完・説明・警告（golangci-lint の JSON Schema に基づく）と、リンター・フォーマッタを一覧から選べるダイアログ（YAML の該当箇所だけを書き換えます）
+- 複数ファイル（タブで切り替え）、同じモジュール内のパッケージ
+- サンプル集（`web/examples/`）
 - URL での共有（コードと設定は URL の `#` 以降に圧縮して入り、サーバーには送られません）
 
 ## 制約
@@ -58,7 +60,7 @@ cd web && npm run build && npm run e2e
 | --- | --- |
 | `wasm/` | golangci-lint を js/wasm にビルドするパイプライン（`golang.org/x/tools` へのパッチ、標準ライブラリのバンドル生成） |
 | `web/` | Web アプリ（Vite + TypeScript + CodeMirror 6）。`src/engine/` が Web Worker で golangci-lint を動かす部分 |
-| `testdata/parity/` | ネイティブ版と WASM 版の結果を比べるテストケース |
+| `testdata/parity/` | ネイティブ版と WASM 版の結果を比べるテストケース（`web/examples/` のサンプルも対象） |
 | `scripts/` | アセットのビルド |
 | `docs/` | 設計書 |
 

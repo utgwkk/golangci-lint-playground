@@ -49,3 +49,20 @@ export function parseTxtar(text: string): TxtarFile[] {
 export function filesFromText(text: string): Files {
   return Object.fromEntries(parseTxtar(text).map((f) => [f.name, f.content]));
 }
+
+/** The text before the first file header (txtar's comment section). */
+export function archiveComment(text: string): string {
+  if (!hasHeaders(text)) return '';
+  const lines = text.split('\n');
+  const first = lines.findIndex((line) => HEADER.test(line));
+  return lines.slice(0, first).join('\n');
+}
+
+/**
+ * Formats files as txtar. A lone main.go is returned as plain text, which is
+ * what the Go Playground does too (and what links shared from Phase 1 contain).
+ */
+export function formatTxtar(files: { name: string; content: string }[]): string {
+  if (files.length === 1 && files[0].name === 'main.go' && !hasHeaders(files[0].content)) return files[0].content;
+  return files.map((f) => `-- ${f.name} --\n${f.content.endsWith('\n') || f.content === '' ? f.content : f.content + '\n'}`).join('');
+}

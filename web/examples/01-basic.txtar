@@ -1,0 +1,37 @@
+基本
+よくある指摘（エラーの無視、使われない代入、printf の書式、閉じ忘れ）を標準のリンターで検査します。
+-- main.go --
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"os"
+)
+
+func main() {
+	f, _ := os.Open("config.txt")
+	defer f.Close()
+
+	count := 1
+	count = 2
+	_ = count
+
+	fmt.Printf("%d\n", "hello")
+
+	resp, err := http.Get("https://example.com")
+	if err != nil {
+		return
+	}
+	fmt.Println(resp.Status)
+}
+-- .golangci.yml --
+version: "2"
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - misspell
+formatters:
+  enable:
+    - gofmt

@@ -274,3 +274,152 @@ button.link {
   .code-pane { grid-row: auto; }
   .toolbar h1 { flex-basis: 100%; }
 }
+
+/* ---- file tabs ---- */
+
+.tabs-header { padding: 0 6px; align-items: stretch; }
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.tab.active { border-bottom-color: var(--accent); }
+
+.tab button {
+  border: none;
+  background: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--muted);
+  padding: 6px 6px;
+}
+.tab.active .tab-name { color: var(--fg); font-weight: 600; }
+.tab .tab-close { padding: 2px 6px; font-family: var(--sans); }
+.tab .tab-close:hover { color: var(--danger); }
+
+.tab-issues {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.tab-add {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  padding: 2px 10px;
+}
+.tab-add:hover { color: var(--accent); }
+
+.tab-input {
+  align-self: center;
+  width: 14em;
+  font: 12px var(--mono);
+  color: var(--fg);
+  background: var(--editor-bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 3px 6px;
+  margin: 2px 0;
+}
+
+.header-actions { display: flex; gap: 12px; }
+
+/* ---- linter / formatter dialog ---- */
+
+.tools-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  padding: 0;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
+}
+.tools-dialog[open] { display: flex; flex-direction: column; }
+.tools-dialog::backdrop { background: rgb(0 0 0 / 0.35); }
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.dialog-header h2 { margin: 0; font-size: 15px; }
+.dialog-close { border: none; background: none; font-size: 18px; color: var(--muted); padding: 0 6px; }
+
+.tools-body { padding: 12px 16px 16px; overflow: auto; }
+.tools-note { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+.tools-body .error { color: var(--danger); }
+
+.tools-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.tools-controls input[type="search"] {
+  flex: 1 1 200px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--editor-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+.tools-controls select { font-size: 13px; }
+
+.tools-lists h3 { margin: 12px 0 6px; font-size: 13px; color: var(--muted); }
+.tools { list-style: none; margin: 0; padding: 0; }
+.tool label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.tool label:hover { background: var(--accent-soft); }
+.tool input { margin-top: 3px; accent-color: var(--accent); }
+.tool-main { display: flex; flex-direction: column; min-width: 0; }
+.tool-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: var(--mono); font-size: 13px; font-weight: 600; }
+.tool-name a { color: var(--fg); text-decoration: none; }
+.tool-name a:hover { color: var(--accent); text-decoration: underline; }
+.tool-desc { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.badges { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.tool-badge {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--active-line);
+  color: var(--muted);
+  font: 500 11px/18px var(--sans);
+}
+.tool-badge.set { background: var(--accent-soft); color: var(--accent); }
+.tool-badge.warn { background: var(--warning-soft); color: var(--warning); }
+.tool-empty { padding: 6px 8px; color: var(--muted); font-size: 12px; }
+
+.samples select { max-width: 16em; }

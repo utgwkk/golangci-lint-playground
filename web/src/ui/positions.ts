@@ -23,13 +23,19 @@ export function byteColumnToIndex(line: string, column: number): number {
   return i;
 }
 
-/** Returns the editor range for an issue, or null if its file is not in the editor. */
+/** Returns the range of an issue in a txtar text, or null if its file is not in it. */
 export function issueRange(text: string, issue: Pick<Issue, 'file' | 'line' | 'column'>): Range | null {
   const file = parseTxtar(text).find((f) => f.name === issue.file);
   if (!file) return null;
-  const lines = file.content.split('\n');
+  const r = fileRange(file.content, issue);
+  return { from: file.offset + r.from, to: file.offset + r.to };
+}
+
+/** Returns the range of a position (1-based line, 1-based byte column) in a file's content. */
+export function fileRange(content: string, issue: Pick<Issue, 'line' | 'column'>): Range {
+  const lines = content.split('\n');
   const lineIndex = Math.min(Math.max(issue.line, 1), lines.length) - 1;
-  let lineStart = file.offset;
+  let lineStart = 0;
   for (let i = 0; i < lineIndex; i++) lineStart += lines[i].length + 1;
   const line = lines[lineIndex];
   if (issue.column <= 0) {
