@@ -17,8 +17,11 @@ concurrency:
 #
 #   typecheck ───────────────┐
 #   unit ────────────────────┤
-#   assets ─┬─ parity ───────┼─ deploy (main only)
+#   assets ─┬─ parity ───────┼─ ci-success ─ deploy (main only)
 #           └─ e2e ──────────┘
+#
+# "CI success" (ci-success) is the single status check to require in the
+# branch ruleset of main (and for auto-merge).
 
 jobs:
   typecheck:
@@ -203,9 +206,26 @@ jobs:
         with:
           path: web/dist
 
+  # Succeeds only if every job above succeeded. It runs even when one of them
+  # fails, because a skipped job would count as passing a required check.
+  # (Not when the run is cancelled, e.g. superseded by a newer push.)
+  ci-success:
+    name: CI success
+    if: ${{ !cancelled() }}
+    needs: [typecheck, unit, assets, parity, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check that all jobs succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'to_entries | all(.value.result == "success")' > /dev/null
+
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [typecheck, unit, parity, e2e]
+    needs: ci-success
     runs-on: ubuntu-latest
     permissions:
       pages: write

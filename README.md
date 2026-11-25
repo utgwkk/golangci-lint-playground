@@ -64,6 +64,8 @@ cd web && npm run build && npm run e2e
 
 `main` ブランチへの push で、GitHub Actions がテストを実行し、GitHub Pages にデプロイします（リポジトリの Settings → Pages で Source を「GitHub Actions」にしておく必要があります）。
 
+CI のすべてのジョブが成功したかは、`CI success` という 1 つのチェックにまとまっています。`main` を保護するときは、Settings → Rules → Rulesets のブランチ ruleset で「Require status checks to pass」に `CI success` だけを指定してください。ジョブを増やしたり分けたりしても、ruleset を変える必要はありません。auto-merge（Settings → General → Allow auto-merge）もこのチェックを待ってマージします。
+
 ## License
 
 MIT
