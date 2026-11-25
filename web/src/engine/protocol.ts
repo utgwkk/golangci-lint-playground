@@ -13,7 +13,8 @@ export type ToWorker =
       goVersion: string;
     }
   | { type: 'lint'; id: number; files: Files }
-  | { type: 'format'; id: number; files: Files };
+  | { type: 'format'; id: number; files: Files }
+  | { type: 'fix'; id: number; files: Files };
 
 export interface LintResult {
   /** null when golangci-lint did not produce a report (e.g. invalid configuration). */
@@ -33,8 +34,14 @@ export interface FormatResult {
   ms: number;
 }
 
+export interface FixResult extends LintResult {
+  /** The files after applying the fixes (all files that were sent, except .golangci.yml). */
+  files: Files;
+}
+
 export type FromWorker =
   | { type: 'ready'; files: number }
   | ({ type: 'result'; id: number } & LintResult)
   | ({ type: 'formatted'; id: number } & FormatResult)
+  | ({ type: 'fixed'; id: number } & FixResult)
   | { type: 'error'; id?: number; message: string };

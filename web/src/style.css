@@ -428,3 +428,17 @@ button.link {
 .tool-empty { padding: 6px 8px; color: var(--muted); font-size: 12px; }
 
 .samples select { max-width: 16em; }
+
+/* ---- quick fixes ---- */
+
+.issues li { display: flex; align-items: flex-start; gap: 4px; }
+.issues li .issue { flex: 1; min-width: 0; }
+.quick-fix {
+  flex: none;
+  margin-top: 6px;
+  padding: 1px 8px;
+  font-size: 12px;
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}

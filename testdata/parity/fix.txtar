@@ -1,0 +1,25 @@
+Auto-fixable issues from linters and a formatter, after multibyte text (fixes use byte offsets).
+-- main.go --
+package main
+import "fmt"
+
+// 日本語のコメント
+func main() {
+	for i := 0; i < 3; i++ {
+		fmt.Println(i)
+	}
+	fmt.Println("occured")
+	m := 10
+	if m > 5 {
+		m = 5
+	}
+	var s = fmt.Sprintf("%d", m)
+	fmt.Println(s)
+}
+-- .golangci.yml --
+version: "2"
+linters:
+  default: none
+  enable: [modernize, misspell, perfsprint, errcheck]
+formatters:
+  enable: [gofumpt]

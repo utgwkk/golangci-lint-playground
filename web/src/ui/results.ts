@@ -1,6 +1,6 @@
 // Renders lint results as a list. Every value is inserted as text (never as HTML).
 
-import type { Issue } from '../engine/normalize';
+import type { Fix, Issue } from '../engine/normalize';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -13,7 +13,13 @@ export function sortIssues(issues: Issue[]): Issue[] {
   return [...issues].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column);
 }
 
-export function renderIssues(container: HTMLElement, issues: Issue[], onSelect: (issue: Issue) => void): void {
+export function renderIssues(
+  container: HTMLElement,
+  issues: Issue[],
+  onSelect: (issue: Issue) => void,
+  onFix?: (issue: Issue, fix: Fix) => void,
+  fixLabel: (fix: Fix) => string = () => '修正',
+): void {
   container.replaceChildren();
   if (!issues.length) {
     container.append(el('p', 'clean', '指摘はありません'));
@@ -33,6 +39,15 @@ export function renderIssues(container: HTMLElement, issues: Issue[], onSelect: 
     );
     button.addEventListener('click', () => onSelect(issue));
     item.append(button);
+    if (onFix) {
+      for (const fix of issue.fixes ?? []) {
+        const apply = el('button', 'quick-fix', '修正');
+        apply.type = 'button';
+        apply.title = fixLabel(fix);
+        apply.addEventListener('click', () => onFix(issue, fix));
+        item.append(apply);
+      }
+    }
     list.append(item);
   }
   container.append(list);

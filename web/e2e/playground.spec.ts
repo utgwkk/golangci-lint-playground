@@ -363,3 +363,63 @@ test('picks up redeployed assets without a forced reload', async ({ page }) => {
     await writeFile(manifestPath, manifestText);
   }
 });
+
+const FIXABLE_CODE =
+  'package main\n\nimport "fmt"\n\n// 日本語のコメント\nfunc main() {\n\tfor i := 0; i < 3; i++ {\n\t\tfmt.Println(i)\n\t}\n\tfmt.Println("occured")\n\tm := 10\n\tif m > 5 {\n\t\tm = 5\n\t}\n\tfmt.Println(m)\n}\n';
+const FIXABLE_CONFIG = 'version: "2"\nlinters:\n  default: none\n  enable: [modernize, misspell, errcheck]\n';
+
+async function waitForRun(page: Page, action: () => Promise<void>): Promise<string[]> {
+  await page.evaluate(() => delete document.body.dataset.lastRun);
+  await action();
+  await expect(page.locator('body')).toHaveAttribute('data-last-run', /.+/, { timeout: 120_000 });
+  return page.locator('.issue .badge').allTextContents();
+}
+
+test('fixes all auto-fixable issues with the Fix button', async ({ page }) => {
+  await open(page);
+  await setEditor(page, 'code', FIXABLE_CODE);
+  await setEditor(page, 'config', FIXABLE_CONFIG);
+  expect(await waitForRun(page, () => page.click('#fix'))).toEqual([]);
+  // Same result as golangci-lint --fix (see test/fixes.test.ts).
+  expect(await codeText(page)).toBe(
+    'package main\n\nimport "fmt"\n\n// 日本語のコメント\nfunc main() {\n\tfor i := range 3 {\n\t\tfmt.Println(i)\n\t}\n\tfmt.Println("occurred")\n\tm := min(10, 5)\n\tfmt.Println(m)\n}\n',
+  );
+  await expect(page.locator('#status-text')).toHaveText('自動修正しました（main.go）。残りの指摘: 0 件');
+
+  // Undoable.
+  await page.locator('#code .cm-content').click();
+  await page.keyboard.press('ControlOrMeta+Z');
+  expect(await codeText(page)).toBe(FIXABLE_CODE);
+});
+
+test('applies quick fixes from the results and the editor, then lints again', async ({ page }) => {
+  await open(page);
+  await setEditor(page, 'code', FIXABLE_CODE);
+  await setEditor(page, 'config', FIXABLE_CONFIG);
+  expect((await run(page)).sort()).toEqual(['misspell', 'modernize', 'modernize']);
+
+  // From the results list.
+  const misspell = page.locator('.issues li', { has: page.locator('.badge', { hasText: 'misspell' }) });
+  expect((await waitForRun(page, () => misspell.locator('.quick-fix').click())).sort()).toEqual(['modernize', 'modernize']);
+  await expect(page.locator('#code .cm-content')).toContainText('fmt.Println("occurred")');
+  await expect(page.locator('#status-text')).toContainText('misspell の修正を適用しました。再完了');
+
+  // From the diagnostic in the editor.
+  await page.locator('#code .cm-line', { hasText: 'for i := 0' }).locator('.cm-lintRange').first().hover();
+  const action = page.locator('.cm-tooltip-hover .cm-diagnosticAction', { hasText: 'range' });
+  expect(await waitForRun(page, () => action.click())).toEqual(['modernize']);
+  await expect(page.locator('#code .cm-content')).toContainText('for i := range 3 {');
+});
+
+test('refuses quick fixes for code changed after the run', async ({ page }) => {
+  await open(page);
+  await setEditor(page, 'code', FIXABLE_CODE);
+  await setEditor(page, 'config', FIXABLE_CONFIG);
+  await run(page);
+  await page.locator('#code .cm-line').first().click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' // edited');
+  await page.locator('.issues li', { has: page.locator('.badge', { hasText: 'misspell' }) }).locator('.quick-fix').click();
+  await expect(page.locator('#status-text')).toContainText('もう一度 Run してください');
+  await expect(page.locator('#code .cm-content')).toContainText('fmt.Println("occured")');
+});

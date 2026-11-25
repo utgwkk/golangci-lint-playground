@@ -5,7 +5,7 @@
 import { MemFS } from './gofs';
 import { loadBundle } from './bundle';
 import { cleanLog, parseReport } from './normalize';
-import { FORMAT_ARGS, installGlobals, readWorkspace, runGolangciLint, writeWorkspace } from './runner';
+import { CONFIG_FILE, FIX_ARGS, FORMAT_ARGS, installGlobals, readWorkspace, runGolangciLint, writeWorkspace } from './runner';
 import type { FromWorker, ToWorker } from './protocol';
 
 const memfs = new MemFS();
@@ -55,6 +55,22 @@ async function format(msg: Extract<ToWorker, { type: 'format' }>): Promise<void>
   });
 }
 
+async function fix(msg: Extract<ToWorker, { type: 'fix' }>): Promise<void> {
+  if (!module) throw new Error('engine is not initialized');
+  writeWorkspace(memfs, msg.files, goVersion);
+  const r = await runGolangciLint(memfs, module, FIX_ARGS);
+  post({
+    type: 'fixed',
+    id: msg.id,
+    // The report lists the issues that remain after fixing.
+    issues: parseReport(r.report),
+    files: readWorkspace(memfs, Object.keys(msg.files).filter((name) => name !== CONFIG_FILE)),
+    log: cleanLog([r.stdout, r.stderr].filter(Boolean).join('\n')),
+    exitCode: r.exitCode,
+    ms: r.ms,
+  });
+}
+
 // Messages are handled one at a time: each run gets a fresh Go instance and
 // shares the MemFS (and therefore golangci-lint's cache) with previous runs.
 let queue = Promise.resolve();
@@ -65,6 +81,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       if (msg.type === 'init') await init(msg);
       else if (msg.type === 'lint') await lint(msg);
       else if (msg.type === 'format') await format(msg);
+      else if (msg.type === 'fix') await fix(msg);
     } catch (err) {
       post({ type: 'error', id: msg.type === 'init' ? undefined : msg.id, message: String((err as Error)?.message ?? err) });
     }
