@@ -28,9 +28,9 @@
     "yaml": "2.8.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.65.1",
     "@types/node": "22.15.30",
-    "tsx": "4.20.3",
+    "tsx": "4.23.15",
     "typescript": "5.8.3",
     "vite": "6.3.5",
     "vitest": "3.2.4"
