@@ -275,6 +275,7 @@ Future extension (Phase 3): **loading from GitHub Gist** (`/#gist=<id>`). The Gi
 - `/versions.json` lists the published versions, the default version, and the Go version and asset sizes of each version
 - Only the assets of the selected version are fetched (switching versions fetches about 24 MB for that version)
 - A scheduled job (GitHub Actions schedule) detects new releases and automatically opens a PR that builds, tests, deploys and updates `versions.json`
+  - For now, with a single version, Dependabot opens the PR that upgrades golangci-lint in `wasm/go.mod` ([section 7](#7-deployment)). CI rebuilds the assets and checks that the x/tools patches still apply, that the results match the native build and that the licenses of the new dependencies are compatible ([section 12](#12-licenses))
 - Keep roughly the latest patch release of the last N (e.g. 5) minor versions. If a share URL uses a removed version, open it with the closest version and show a warning
 
 ### 4.6 Features that do not work in the browser
@@ -370,6 +371,7 @@ All linting happens in the user's own browser, so the sandbox, rate limiting and
   - The assets are saved with `actions/cache`, keyed by a hash of the files involved in the build, and the build is skipped when nothing changed
   - **The `CI success` job**: an aggregate job that succeeds only when every job needed for deployment succeeded. Only this job is set as the required check of the `main` branch ruleset and for auto-merge (so changing the job structure does not require changing the ruleset). Required checks treat skipped jobs as successful, so `CI success` always runs even when an upstream job fails (`if: !cancelled()`) and checks that every result is `success`. `deploy` depends only on this job
   - Splitting the jobs further, one runner per Go build, was rejected: the Go build cache (`setup-go` uses a shared cache key) would be contended between jobs and more artifacts would be passed around, for little gain
+- **Dependency updates**: Dependabot (`.github/dependabot.yml`) opens weekly PRs that update golangci-lint (`wasm/go.mod`), the npm packages (`web/`) and the GitHub Actions (pinned to commit SHAs). A version is proposed only after it has been out for 7 days (cooldown), so that broken or compromised releases are likely to be noticed and pulled first. Security updates are not delayed. The CodeMirror packages are updated together (they share state such as `@codemirror/state`), and so are the minor and patch versions of the development tools and the actions. The other Go modules follow the versions golangci-lint requires and are not updated on their own. The PRs run the whole CI and are merged by hand
 - **Documentation sync**: the `unit` job runs `scripts/check-design-sync.mjs`, which fails when `docs/design.md` and `docs/design.ja.md` do not have the same heading structure (levels and section numbers)
 
 ## 8. Observability

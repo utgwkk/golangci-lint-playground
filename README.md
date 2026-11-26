@@ -72,6 +72,8 @@ On pushes to `main`, GitHub Actions runs the tests and deploys to GitHub Pages (
 
 Whether all CI jobs succeeded is reported as a single check, `CI success`. To protect `main`, require only `CI success` in the branch ruleset (Settings → Rules → Rulesets → "Require status checks to pass"). Adding or splitting jobs does not require changing the ruleset. Auto-merge (Settings → General → Allow auto-merge) waits for this check too.
 
+Dependabot (`.github/dependabot.yml`) opens weekly pull requests that update golangci-lint, the npm packages and the GitHub Actions, once a new version has been out for 7 days.
+
 ## License
 
 This repository is licensed under the [MIT license](LICENSE), except the patches to `golang.org/x/tools` in `wasm/xtools/patches/`, which are under the BSD-3-Clause license of `golang.org/x/tools` ([wasm/xtools/LICENSE](wasm/xtools/LICENSE)).

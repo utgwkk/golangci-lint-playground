@@ -1,0 +1,54 @@
+# Dependabot version updates (see docs/design.md, section 7).
+#
+# Every update waits until the new version has been out for 7 days
+# (cooldown), so that broken or compromised releases are likely to be noticed
+# and pulled before they reach this repository. The cooldown does not apply
+# to Dependabot security updates.
+#
+# Each pull request runs the whole CI (including the parity tests against the
+# native golangci-lint and E2E), and is merged by hand.
+version: 2
+updates:
+  # golangci-lint. It is the only direct dependency of wasm/go.mod: the other
+  # modules (including golang.org/x/tools, which wasm/xtools patches) follow
+  # the versions it requires, so they are not updated on their own.
+  - package-ecosystem: gomod
+    directory: /wasm
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      # CodeMirror packages share state (e.g. @codemirror/state) and must be
+      # updated together.
+      codemirror:
+        patterns:
+          - "@codemirror/*"
+          - "@lezer/*"
+          - "codemirror"
+      # Build and test tools, except major versions (one pull request each).
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  # Actions are pinned to commit SHAs with the version in a comment; Dependabot
+  # updates both.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
