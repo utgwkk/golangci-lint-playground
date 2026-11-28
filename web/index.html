@@ -50,8 +50,21 @@
       <div id="config" class="editor"></div>
     </section>
     <section class="pane results-pane" aria-label="Results">
-      <div class="pane-header"><span>Results</span><span id="summary" class="hint"></span></div>
-      <div id="results" class="results"><p class="placeholder">Press Run to lint with golangci-lint.</p></div>
+      <div class="pane-header results-header">
+        <span id="results-title">Results</span>
+        <div id="results-tabs" class="results-tabs" role="tablist" aria-label="Results" hidden>
+          <button id="tab-issues" type="button" role="tab" aria-selected="true" aria-controls="results">Issues</button>
+          <button id="tab-stats" type="button" role="tab" aria-selected="false" aria-controls="stats">Stats</button>
+        </div>
+        <span class="header-actions">
+          <span id="summary" class="hint"></span>
+          <label class="switch" title="Run golangci-lint with --verbose and show timing statistics in a Stats tab">
+            <input id="stats-toggle" type="checkbox" role="switch"> Stats
+          </label>
+        </span>
+      </div>
+      <div id="results" class="results" role="tabpanel" aria-labelledby="tab-issues"><p class="placeholder">Press Run to lint with golangci-lint.</p></div>
+      <div id="stats" class="results stats" role="tabpanel" aria-labelledby="tab-stats" hidden></div>
       <details id="log-details" class="log" hidden>
         <summary>golangci-lint log</summary>
         <pre id="log"></pre>

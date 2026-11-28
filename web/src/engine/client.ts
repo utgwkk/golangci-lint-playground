@@ -164,23 +164,24 @@ export class Engine {
     return this.ready;
   }
 
-  private request<T>(type: 'lint' | 'format' | 'fix', files: Files): Promise<T> {
+  private request<T>(type: 'lint' | 'format' | 'fix', files: Files, verbose = false): Promise<T> {
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (r: never) => void, reject });
-      this.worker!.postMessage({ type, id, files } satisfies ToWorker);
+      this.worker!.postMessage((type === 'format' ? { type, id, files } : { type, id, files, verbose }) satisfies ToWorker);
     });
   }
 
-  async lint(files: Files): Promise<LintResult> {
+  /** Lints the files. With verbose, the result has statistics of the run (see stats.ts). */
+  async lint(files: Files, { verbose = false } = {}): Promise<LintResult> {
     await this.ready;
-    return this.request<LintResult>('lint', files);
+    return this.request<LintResult>('lint', files, verbose);
   }
 
   /** Lints with --fix: returns the fixed files and the issues that remain. */
-  async fix(files: Files): Promise<FixResult> {
+  async fix(files: Files, { verbose = false } = {}): Promise<FixResult> {
     await this.ready;
-    return this.request<FixResult>('fix', files);
+    return this.request<FixResult>('fix', files, verbose);
   }
 
   /** Formats the Go files with goimports (see FORMAT_ARGS). */

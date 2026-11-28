@@ -156,6 +156,12 @@ golangci-lint のネイティブ版（v2.5.0・v2.15.0）と、js/wasm 版の Po
     - エディタ内に波線マーカー、ホバーでメッセージ
     - **Quick Fix**: `SuggestedFixes` がある指摘には、結果一覧と、エディタの指摘のポップアップに「Fix」ボタンを出す。修正案の編集は UTF-8 のバイト位置なので、検査したときの内容に対してバイト単位で当て（`fixes.ts`）、当てたあとは自動で検査し直す。検査のあとにコードを編集していたら位置がずれるので、適用せずにもう一度実行するよう案内する
     - 実行時間、golangci-lint のログ（stderr、折りたたみ）
+    - **統計**（既定ではオフ）: 結果パネルのヘッダの `Stats` スイッチを入れると、`Run` と `Fix` が `--verbose` を付けて実行し、`Issues` / `Stats` のタブが出る。スイッチの状態は `localStorage` に覚える。golangci-lint には機械可読な時間の出力がないので、`engine/stats.ts` が verbose のログ（logrus の `level=info msg="..."` の行）を解析し、`ui/stats.ts` が以下を表示する
+      - 全体の時間・パッケージの読み込み・リンターの実行（有効なリンターの数つき）・メモリの最大と平均のタイル
+      - 遅いアナライザーの順に並べた横棒グラフ（1 行に 1 本の棒を持つ表、1 色）。golangci-lint が出すのは go/analysis のアナライザーの上位 10 件だけで（golangci-lint 側で固定。golangci-lint は改変しない）、リンターごとの時間は出ない。1 つのリンターが複数のアナライザーからなることがあり、共有のアナライザー（`buildir`・`inspect`・`ctrlflow` など）もある。時間は全パッケージの合計で重なりもあるため、合計が全体の時間を超えることがある
+      - 解析結果が golangci-lint のキャッシュから再利用されたとき（以前の実行とコード・設定が同じとき）は、アナライザーが動かずログにも出ないので、その旨を表示する
+      - 指摘を除外した後処理（`nolint_filter`・`exclusion_rules`・`uniq_by_line`・`max_same_issues` など）を、前後の件数と対応する設定とともに表示する。期待した指摘が出ない理由がわかる
+      - 有効なリンターの一覧
 - **初回ロードの表示**: 約 24MB のダウンロード中は進捗（MB / 全体）を表示する。ダウンロード中もエディタは使える。2 回目以降の訪問では Service Worker のキャッシュから読むので待ち時間はほぼない
 - **対象外ブラウザでの案内**: Google Chrome 以外のブラウザでは「This playground is tested with Google Chrome. It may not work correctly in other browsers.」と案内を出す（[1.5](#15-スコープの決定事項)）。実行は止めない
 - **状態の永続化**: 編集中の内容は `localStorage` に自動保存（try/catch でラップ）
@@ -181,12 +187,12 @@ golangci-lint のネイティブ版（v2.5.0・v2.15.0）と、js/wasm 版の Po
 | 方向 | メッセージ | 内容 |
 | --- | --- | --- |
 | UI → Worker | `init` | `{ module, wasmExecUrl, std, cache, goVersion }`。ダウンロード・チェックサム検証・WASM のコンパイルはメインスレッドで済ませ、コンパイル済みのモジュールとバンドルを渡す。Worker はバンドルを MemFS に展開する |
-| UI → Worker | `lint` | `{ id, files: { name: content } }`。`.golangci.yml` も `files` に含める。検査を実行する |
+| UI → Worker | `lint` | `{ id, files: { name: content }, verbose? }`。`.golangci.yml` も `files` に含める。検査を実行する。`verbose` のときは `--verbose` を付けて実行し、ログから解析した統計を結果に加える（`stats`） |
 | UI → Worker | `format` | `{ id, files }`。goimports で整形し（`FORMAT_ARGS`）、整形後のファイルを `formatted`（`{ id, files, log, exitCode, ms }`）で返す |
-| UI → Worker | `fix` | `lint` と同じ入力。`--fix` 付きで実行し（`FIX_ARGS`）、修正後のファイルと残った指摘を `fixed`（`{ id, issues, files, log, exitCode, ms }`）で返す |
+| UI → Worker | `fix` | `lint` と同じ入力（`verbose` を含む）。`--fix` 付きで実行し（`FIX_ARGS`）、修正後のファイルと残った指摘を `fixed`（`{ id, issues, files, log, exitCode, ms }`）で返す |
 | UI → Worker | `migrate` | （Phase 3）`{ id, config }`。`golangci-lint migrate` で v1 設定を v2 に変換する |
 | Worker → UI | `ready` | 初期化完了 |
-| Worker → UI | `result` | `{ id, issues, files?, log, exitCode, ms }` |
+| Worker → UI | `result` | `{ id, issues, files?, log, exitCode, ms, stats? }` |
 | Worker → UI | `error` | `{ id?, code, message }` |
 
 #### 実行の流れ
@@ -386,9 +392,9 @@ golangci-lint のバージョンごとに、以下のアセットを `wasm/dist/
 | 種類 | 内容 | 実行 |
 | --- | --- | --- |
 | MemFS の互換テスト | 同じ操作を MemFS と `node:fs`（一時ディレクトリ）の両方に実行し、結果とエラーコード（`ENOENT`・`EEXIST`・`EISDIR`・`ENOTDIR`・`ENOTEMPTY`・`EBADF` など）が一致することを確認する | `npm test`（`web/test/gofs.test.ts`） |
-| 単体テスト | 結果の正規化（`typecheck` の位置補正、`SuggestedFixes` のデコード、ログの整理）、txtar、共有 URL の往復、UTF-8 の列位置の変換、非対応設定の検出、スキーマのたどり方と検証（テスト用の小さなスキーマで）、カーソル位置の YAML パスの判定、YAML の部分書き換え（コメント・書式が保たれること）、リンターの有効/無効の判定と切り替え、バンドルされたモジュールが属する npm パッケージの判定（`licenses.txt` 用） | `npm test` |
-| ネイティブとの一致テスト | `testdata/parity/*.txtar` と `web/examples/*.txtar`（サンプル集）を、同じバージョンのネイティブ版と WASM 版（Node.js 上）で検査し、Issue（自動修正の内容を含む）が完全に一致することを確認する。各ケースは `--fix` 付きでも実行し、修正後のファイルと残った指摘も一致することを確認する。標準設定、全リンター＋全フォーマッタ、型エラー、複数パッケージ、フォーマッタ、設定の自由記述、nolint、gci の localmodule、自動修正（マルチバイト文字の後ろの修正を含む）の 9 ケースと、サンプル 7 つ | `npm run parity` |
-| E2E | Playwright（Chromium）で、サンプルの検査とエディタのマーカー、Issue クリックでの移動、自由記述した設定（`output.*` を含む）の反映、非対応設定の警告、標準ライブラリ以外の import のエラー位置、ファイルタブ（追加・名前の変更・削除、別ファイルの指摘への移動）、不正な設定のエラー表示、共有 URL（複数ファイル、自動実行しないこと）、キャンセル、Service Worker のキャッシュ（再デプロイで作り直されたアセットを、強制再読み込みなしで取り直せること）、リンター選択ダイアログ（YAML の部分書き換え）、スキーマによる補完・警告・ホバー、サンプル集、goimports による整形（足りない import の追加、全タブ、元に戻す、ショートカット、構文エラーのファイル）、`Fix` によるまとめての修正（元に戻す）、Quick Fix（結果一覧とエディタのポップアップから適用、再検査、検査後に編集したときは適用しないこと）、ライセンスのダイアログ（ライセンスとソースアーカイブを取得できること）の 21 シナリオ（カーソル行の選択の見え方をライト・ダークで確かめる 2 件を含む） | `npm run e2e` |
+| 単体テスト | 結果の正規化（`typecheck` の位置補正、`SuggestedFixes` のデコード、ログの整理）、txtar、共有 URL の往復、UTF-8 の列位置の変換、非対応設定の検出、スキーマのたどり方と検証（テスト用の小さなスキーマで）、カーソル位置の YAML パスの判定、YAML の部分書き換え（コメント・書式が保たれること）、リンターの有効/無効の判定と切り替え、バンドルされたモジュールが属する npm パッケージの判定（`licenses.txt` 用）、verbose のログからの統計の解析（Go の時間表記、アナライザー、除外された指摘、キャッシュが効いた場合） | `npm test` |
+| ネイティブとの一致テスト | `testdata/parity/*.txtar` と `web/examples/*.txtar`（サンプル集）を、同じバージョンのネイティブ版と WASM 版（Node.js 上）で検査し、Issue（自動修正の内容を含む）が完全に一致することを確認する。各ケースは `--fix` 付きでも実行し、修正後のファイルと残った指摘も一致することを確認する。複数のリンターの修正がぶつかると、golangci-lint はその一部を捨てるが、どれを捨てるかは Go の map の走査順で決まるため、同じビルドでも実行ごとに修正後のファイルが変わることがある。その場合（golangci-lint がぶつかりをログに出したとき）に限り、両者が一致するまで最大 5 回まで実行し直す。標準設定、全リンター＋全フォーマッタ、型エラー、複数パッケージ、フォーマッタ、設定の自由記述、nolint、gci の localmodule、自動修正（マルチバイト文字の後ろの修正を含む）の 9 ケースと、サンプル 7 つ | `npm run parity` |
+| E2E | Playwright（Chromium）で、サンプルの検査とエディタのマーカー、Issue クリックでの移動、自由記述した設定（`output.*` を含む）の反映、非対応設定の警告、標準ライブラリ以外の import のエラー位置、ファイルタブ（追加・名前の変更・削除、別ファイルの指摘への移動）、不正な設定のエラー表示、共有 URL（複数ファイル、自動実行しないこと）、キャンセル、Service Worker のキャッシュ（再デプロイで作り直されたアセットを、強制再読み込みなしで取り直せること）、リンター選択ダイアログ（YAML の部分書き換え）、スキーマによる補完・警告・ホバー、サンプル集、goimports による整形（足りない import の追加、全タブ、元に戻す、ショートカット、構文エラーのファイル）、`Fix` によるまとめての修正（元に戻す）、Quick Fix（結果一覧とエディタのポップアップから適用、再検査、検査後に編集したときは適用しないこと）、ライセンスのダイアログ（ライセンスとソースアーカイブを取得できること）、統計（既定ではオフで `--verbose` を付けないこと、実行後の Stats タブ、キャッシュが効いたときの説明、再読み込み後もスイッチを覚えていること）の 22 シナリオ（カーソル行の選択の見え方をライト・ダークで確かめる 2 件を含む） | `npm run e2e` |
 | 設計書の同期 | `docs/design.md` と `docs/design.ja.md` の見出し（レベルと章番号）が一致すること | `node scripts/check-design-sync.mjs` |
 | CI | GitHub Actions で、型チェック・単体テスト・アセットのビルドを並列に、アセットができたらパリティテストと E2E を並列に実行する（[7 章](#7-デプロイ構成)） | `.github/workflows/ci.yml` |
 

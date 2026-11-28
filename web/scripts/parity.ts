@@ -4,6 +4,12 @@
 // twice: a plain run, and a run with --fix (where the fixed files must be
 // identical too).
 //
+// When the fixes of several linters conflict, golangci-lint drops some of them,
+// and which ones depends on the iteration order of a Go map (fixer.go in
+// golangci-lint), so the fixed files can differ between two runs of the same
+// build. Only in that case (golangci-lint logged "due to conflicts with"), a
+// --fix check is run again, up to FIX_ATTEMPTS times, until both builds agree.
+//
 // usage: tsx scripts/parity.ts [versionDir] [nativeBinary]
 // (versionDir defaults to the default version in wasm/dist/versions.json)
 
@@ -36,7 +42,12 @@ interface Outcome {
   issues: Issue[] | null;
   /** The code files after the run (changed only with --fix). */
   files: Files;
+  /** golangci-lint dropped conflicting fixes, in an order that differs between runs. */
+  fixConflicts: boolean;
 }
+
+const FIX_ATTEMPTS = 5;
+const FIX_CONFLICT = /Changes related to .* are skipped for the file .* due to conflicts with/;
 
 function key(i: Issue): string {
   return JSON.stringify([i.file, i.line, i.column, i.linter, i.message, i.fixes ?? null]);
@@ -54,6 +65,7 @@ async function runNative(files: Files, goVersion: string, fix: boolean): Promise
     const report = join(dir, 'report.json');
     const args = [...(fix ? FIX_ARGS : LINT_ARGS)];
     args[args.indexOf('--output.json.path') + 1] = report;
+    let log = '';
     await exec(native, args, {
       cwd: dir,
       env: {
@@ -66,12 +78,15 @@ async function runNative(files: Files, goVersion: string, fix: boolean): Promise
         GOARCH: 'amd64',
         GOLANGCI_LINT_CACHE: join(dir, '.cache'),
       },
-    }).catch((e: { code?: number }) => {
-      if (typeof e.code !== 'number') throw e; // exit codes are expected (issues found)
-    });
+    })
+      .then((r) => (log = r.stderr))
+      .catch((e: { code?: number; stderr?: string }) => {
+        if (typeof e.code !== 'number') throw e; // exit codes are expected (issues found)
+        log = e.stderr ?? '';
+      });
     const out: Files = {};
     for (const name of Object.keys(files)) if (name !== CONFIG_FILE) out[name] = await readFile(join(dir, name), 'utf8');
-    return { issues: parseReport(await readFile(report, 'utf8').catch(() => null)), files: out };
+    return { issues: parseReport(await readFile(report, 'utf8').catch(() => null)), files: out, fixConflicts: FIX_CONFLICT.test(log) };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -80,7 +95,11 @@ async function runNative(files: Files, goVersion: string, fix: boolean): Promise
 const rt = await loadRuntime(versionDir);
 async function runWasm(files: Files, fix: boolean): Promise<Outcome> {
   const r = await rt.run(files, fix ? FIX_ARGS : LINT_ARGS);
-  return { issues: r.issues, files: readWorkspace(rt.memfs, Object.keys(files).filter((n) => n !== CONFIG_FILE)) };
+  return {
+    issues: r.issues,
+    files: readWorkspace(rt.memfs, Object.keys(files).filter((n) => n !== CONFIG_FILE)),
+    fixConflicts: FIX_CONFLICT.test(r.stderr),
+  };
 }
 
 const cases: string[] = [];
@@ -95,8 +114,14 @@ for (const path of cases) {
   for (const fix of [false, true]) {
     checks++;
     const label = `${name}${fix ? ' (--fix)' : ''}`;
-    const expected = await runNative(files, rt.goVersion, fix);
-    const actual = await runWasm(files, fix);
+    let expected = await runNative(files, rt.goVersion, fix);
+    let actual = await runWasm(files, fix);
+    let attempts = 1;
+    const sameFiles = () => Object.keys(expected.files).every((f) => expected.files[f] === actual.files[f]);
+    while (fix && !sameFiles() && (expected.fixConflicts || actual.fixConflicts) && attempts < FIX_ATTEMPTS) {
+      attempts++;
+      [expected, actual] = [await runNative(files, rt.goVersion, fix), await runWasm(files, fix)];
+    }
     const want = new Set((expected.issues ?? []).map(key));
     const got = new Set((actual.issues ?? []).map(key));
     const missing = [...want].filter((k) => !got.has(k));
@@ -106,7 +131,8 @@ for (const path of cases) {
     const ok = expected.issues !== null && actual.issues !== null && !missing.length && !extra.length && !changedFiles.length;
     console.log(
       `${ok ? 'ok  ' : 'FAIL'} ${label}: native=${expected.issues?.length ?? 'no report'} wasm=${actual.issues?.length ?? 'no report'}` +
-        (fix ? ` fixed files=${fixedFiles.length}` : ''),
+        (fix ? ` fixed files=${fixedFiles.length}` : '') +
+        (attempts > 1 ? ` (attempt ${attempts}: golangci-lint resolves conflicting fixes in random order)` : ''),
     );
     for (const k of missing) console.log(`     only native: ${k}`);
     for (const k of extra) console.log(`     only wasm:   ${k}`);

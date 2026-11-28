@@ -5,6 +5,7 @@ import { fetchCatalog } from './config/catalog';
 import { CancelledError, Engine, fetchVersions, type VersionInfo, type VersionsManifest } from './engine/client';
 import type { Fix, Issue } from './engine/normalize';
 import type { Files, LintResult } from './engine/protocol';
+import type { RunStats } from './engine/stats';
 import { CONFIG_FILE } from './engine/runner';
 import { applyFix } from './fixes';
 import { DEFAULT_CODE, DEFAULT_CONFIG, SAMPLES } from './samples';
@@ -14,6 +15,7 @@ import { FileTabs } from './ui/files';
 import { fileRange } from './ui/positions';
 import { renderIssues, renderMessage } from './ui/results';
 import { LicensesDialog } from './ui/licenses';
+import { renderStats } from './ui/stats';
 import { ToolsPanel } from './ui/toolspanel';
 
 type State = 'loading' | 'ready' | 'running' | 'error';
@@ -31,6 +33,12 @@ const ui = {
   notice: $('notice'),
   results: $('results'),
   summary: $('summary'),
+  resultsTitle: $('results-title'),
+  resultsTabs: $('results-tabs'),
+  tabIssues: $<HTMLButtonElement>('tab-issues'),
+  tabStats: $<HTMLButtonElement>('tab-stats'),
+  statsToggle: $<HTMLInputElement>('stats-toggle'),
+  stats: $('stats'),
   logDetails: $<HTMLDetailsElement>('log-details'),
   log: $('log'),
   resetConfig: $<HTMLButtonElement>('reset-config'),
@@ -163,8 +171,58 @@ function fixLabel(fix: Fix): string {
   return fix.message ? `Fix: ${fix.message}` : 'Fix';
 }
 
+// ---- statistics (golangci-lint run --verbose), off unless the Stats switch is on ----
+
+const STATS_KEY = 'golangci-lint-playground:stats';
+
+function loadStatsSetting(): boolean {
+  try {
+    return localStorage.getItem(STATS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+let statsEnabled = loadStatsSetting();
+/** Statistics of the last run with the switch on (undefined: none yet, null: golangci-lint logged none). */
+let lastStats: RunStats | null | undefined;
+
+function showTab(tab: 'issues' | 'stats'): void {
+  ui.tabIssues.setAttribute('aria-selected', String(tab === 'issues'));
+  ui.tabStats.setAttribute('aria-selected', String(tab === 'stats'));
+  ui.results.hidden = tab !== 'issues';
+  ui.stats.hidden = tab !== 'stats';
+}
+
+function updateStatsUI(): void {
+  ui.statsToggle.checked = statsEnabled;
+  ui.resultsTabs.hidden = !statsEnabled;
+  ui.resultsTitle.hidden = statsEnabled;
+  if (!statsEnabled) showTab('issues');
+  renderStats(ui.stats, lastStats);
+}
+
+ui.statsToggle.addEventListener('change', () => {
+  statsEnabled = ui.statsToggle.checked;
+  try {
+    localStorage.setItem(STATS_KEY, statsEnabled ? '1' : '0');
+  } catch {
+    // The setting is only remembered for this page.
+  }
+  lastStats = undefined;
+  updateStatsUI();
+  if (statsEnabled) showTab('stats');
+});
+ui.tabIssues.addEventListener('click', () => showTab('issues'));
+ui.tabStats.addEventListener('click', () => showTab('stats'));
+updateStatsUI();
+
 /** Shows a lint report. Returns false if golangci-lint failed before linting. */
 function showResult(result: LintResult, linted: Files): boolean {
+  if (statsEnabled) {
+    lastStats = result.stats;
+    renderStats(ui.stats, lastStats);
+  }
   ui.log.textContent = result.log;
   ui.logDetails.hidden = !result.log;
   if (result.issues) {
@@ -215,7 +273,7 @@ async function run(prefix = ''): Promise<void> {
   status(`${prefix}Linting…`);
   try {
     const files = collectFiles();
-    const result = await engine.lint(files);
+    const result = await engine.lint(files, { verbose: statsEnabled });
     const seconds = ((performance.now() - started) / 1000).toFixed(2);
     status(showResult(result, codeFiles(files)) ? `${prefix}Done (${seconds} s)` : `${prefix}Failed (${seconds} s)`);
     setState('ready');
@@ -233,7 +291,7 @@ async function fixAll(): Promise<void> {
   tabs.setDiagnostics(new Map());
   status('Fixing…');
   try {
-    const result = await engine.fix(collectFiles());
+    const result = await engine.fix(collectFiles(), { verbose: statsEnabled });
     const changed = Object.entries(result.files)
       .filter(([name, content]) => tabs.replaceContent(name, content))
       .map(([name]) => name);
