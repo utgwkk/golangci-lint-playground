@@ -33,6 +33,11 @@ export const LINT_ARGS = [
 /** Like LINT_ARGS, but applies the fixes of auto-fixable issues to the files. */
 export const FIX_ARGS = [...LINT_ARGS.slice(0, -1), '--fix', './...'];
 
+/** Adds --verbose to LINT_ARGS or FIX_ARGS: the log then has timings and other statistics (see stats.ts). */
+export function verboseArgs(args: string[]): string[] {
+  return [...args.slice(0, -1), '--verbose', ...args.slice(-1)];
+}
+
 /**
  * Formats with goimports only (also adds missing and removes unused imports).
  * The user's configuration is not read, so that the result does not depend on

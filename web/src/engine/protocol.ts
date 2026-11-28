@@ -1,5 +1,6 @@
 // Messages exchanged between the UI (main thread) and the engine worker.
 import type { Issue } from './normalize';
+import type { RunStats } from './stats';
 
 export type Files = Record<string, string>;
 
@@ -12,9 +13,9 @@ export type ToWorker =
       cache: Uint8Array | null;
       goVersion: string;
     }
-  | { type: 'lint'; id: number; files: Files }
+  | { type: 'lint'; id: number; files: Files; verbose?: boolean }
   | { type: 'format'; id: number; files: Files }
-  | { type: 'fix'; id: number; files: Files };
+  | { type: 'fix'; id: number; files: Files; verbose?: boolean };
 
 export interface LintResult {
   /** null when golangci-lint did not produce a report (e.g. invalid configuration). */
@@ -23,6 +24,8 @@ export interface LintResult {
   log: string;
   exitCode: number;
   ms: number;
+  /** Statistics from the verbose log; only when the run was verbose (null if the log had none). */
+  stats?: RunStats | null;
 }
 
 export interface FormatResult {

@@ -457,3 +457,42 @@ test('links to the licenses and the source code of golangci-lint', async ({ page
   await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
 });
+
+test('shows statistics of verbose runs only when the Stats switch is on', async ({ page }) => {
+  await open(page);
+  const toggle = page.locator('#stats-toggle');
+
+  // Off by default: no tabs, and golangci-lint runs without --verbose.
+  await expect(toggle).not.toBeChecked();
+  await expect(page.locator('#results-tabs')).toBeHidden();
+  await run(page);
+  await expect(page.locator('#log')).not.toContainText('Execution took');
+
+  // On: a Stats tab with the timings of the next run.
+  await toggle.check();
+  await expect(page.locator('#results-tabs')).toBeVisible();
+  await expect(page.locator('#stats')).toContainText('Press Run to collect statistics');
+  await setEditor(page, 'code', 'package main\n\nimport "os"\n\nfunc main() {\n\tos.Remove("x")\n}\n');
+  await run(page);
+  const stats = page.locator('#stats');
+  await expect(stats).toBeVisible();
+  await expect(stats.locator('.stat-tile')).toHaveCount(4);
+  await expect(stats.locator('.stat-tile', { hasText: 'Total' })).toContainText(/\d+(\.\d+)? (ms|s)/);
+  await expect(stats.locator('.stats-bars tr').first()).toBeVisible();
+  await expect(stats).toContainText('Active linters');
+
+  // The same code again: the analysis results come from golangci-lint's cache.
+  await run(page);
+  await expect(stats).toContainText("reused from golangci-lint's cache");
+
+  // The issues are one click away, and the switch is remembered.
+  await page.click('#tab-issues');
+  await expect(page.locator('.issue', { hasText: 'errcheck' })).toBeVisible();
+  await page.reload();
+  await expect(page.locator('body')).toHaveAttribute('data-state', 'ready', { timeout: 120_000 });
+  await expect(toggle).toBeChecked();
+
+  await toggle.uncheck();
+  await expect(page.locator('#results-tabs')).toBeHidden();
+  await expect(page.locator('#results')).toBeVisible();
+});

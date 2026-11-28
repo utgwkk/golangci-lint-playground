@@ -14,6 +14,7 @@ A playground that runs [golangci-lint](https://golangci-lint.run/) entirely in t
 - Multiple files (in tabs) and packages within the same module
 - Samples (`web/examples/`)
 - Sharing by URL (the code and configuration are compressed into the part of the URL after `#`, which is never sent to the server)
+- Statistics of a run (off by default; turn on the `Stats` switch above the results): time spent loading packages and running linters, the slowest analyzers, memory, and how many issues each step such as `//nolint` filtered out (from `golangci-lint run --verbose`)
 
 ## Limitations
 

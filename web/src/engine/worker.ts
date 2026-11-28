@@ -5,7 +5,8 @@
 import { MemFS } from './gofs';
 import { loadBundle } from './bundle';
 import { cleanLog, parseReport } from './normalize';
-import { CONFIG_FILE, FIX_ARGS, FORMAT_ARGS, installGlobals, readWorkspace, runGolangciLint, writeWorkspace } from './runner';
+import { CONFIG_FILE, FIX_ARGS, FORMAT_ARGS, installGlobals, LINT_ARGS, readWorkspace, runGolangciLint, verboseArgs, writeWorkspace } from './runner';
+import { parseStats } from './stats';
 import type { FromWorker, ToWorker } from './protocol';
 
 const memfs = new MemFS();
@@ -30,7 +31,7 @@ async function init(msg: Extract<ToWorker, { type: 'init' }>): Promise<void> {
 async function lint(msg: Extract<ToWorker, { type: 'lint' }>): Promise<void> {
   if (!module) throw new Error('engine is not initialized');
   writeWorkspace(memfs, msg.files, goVersion);
-  const r = await runGolangciLint(memfs, module);
+  const r = await runGolangciLint(memfs, module, msg.verbose ? verboseArgs(LINT_ARGS) : LINT_ARGS);
   post({
     type: 'result',
     id: msg.id,
@@ -38,6 +39,7 @@ async function lint(msg: Extract<ToWorker, { type: 'lint' }>): Promise<void> {
     log: cleanLog([r.stdout, r.stderr].filter(Boolean).join('\n')),
     exitCode: r.exitCode,
     ms: r.ms,
+    ...(msg.verbose ? { stats: parseStats(r.stderr) } : {}),
   });
 }
 
@@ -58,7 +60,7 @@ async function format(msg: Extract<ToWorker, { type: 'format' }>): Promise<void>
 async function fix(msg: Extract<ToWorker, { type: 'fix' }>): Promise<void> {
   if (!module) throw new Error('engine is not initialized');
   writeWorkspace(memfs, msg.files, goVersion);
-  const r = await runGolangciLint(memfs, module, FIX_ARGS);
+  const r = await runGolangciLint(memfs, module, msg.verbose ? verboseArgs(FIX_ARGS) : FIX_ARGS);
   post({
     type: 'fixed',
     id: msg.id,
@@ -68,6 +70,7 @@ async function fix(msg: Extract<ToWorker, { type: 'fix' }>): Promise<void> {
     log: cleanLog([r.stdout, r.stderr].filter(Boolean).join('\n')),
     exitCode: r.exitCode,
     ms: r.ms,
+    ...(msg.verbose ? { stats: parseStats(r.stderr) } : {}),
   });
 }
 
